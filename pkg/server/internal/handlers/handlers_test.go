@@ -51,7 +51,7 @@ func TestHandleURLCommand(t *testing.T) {
 				return expectedResult
 			})
 
-		handlers.HandleURLCommand(recorder, req, cfg, mockExecutor)
+		handlers.URLCommandHandler(recorder, req, cfg, mockExecutor)
 
 		if recorder.Code != http.StatusOK {
 			t.Errorf("expected status OK, got %d", recorder.Code)
@@ -71,7 +71,7 @@ func TestHandleURLCommand(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/non-existent", nil)
 		recorder := httptest.NewRecorder()
 
-		handlers.HandleURLCommand(recorder, req, cfg, mockExecutor)
+		handlers.URLCommandHandler(recorder, req, cfg, mockExecutor)
 
 		if recorder.Code != http.StatusNotFound {
 			t.Errorf("expected status NotFound, got %d", recorder.Code)
@@ -96,7 +96,7 @@ func TestHandleURLCommand(t *testing.T) {
 			RunCommand(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(expectedResult)
 
-		handlers.HandleURLCommand(recorder, req, cfg, mockExecutor)
+		handlers.URLCommandHandler(recorder, req, cfg, mockExecutor)
 
 		if recorder.Code != http.StatusInternalServerError {
 			t.Errorf("expected status InternalServerError, got %d", recorder.Code)
@@ -128,7 +128,7 @@ func TestHandleURLCommand(t *testing.T) {
 				return handlers.CommandResult{ExitCode: 0, Output: "ok"}
 			})
 
-		handlers.HandleURLCommand(recorder, req, cfg, mockExecutor)
+		handlers.URLCommandHandler(recorder, req, cfg, mockExecutor)
 
 		if recorder.Code != http.StatusOK {
 			t.Errorf("expected status OK, got %d", recorder.Code)

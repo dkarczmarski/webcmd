@@ -77,7 +77,7 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(responseWriter http.ResponseWriter, request *http.Request) {
-		handlers.HandleURLCommand(responseWriter, request, configuration, options.Executor)
+		handlers.URLCommandHandler(responseWriter, request, configuration, options.Executor)
 	})
 
 	//nolint:exhaustruct

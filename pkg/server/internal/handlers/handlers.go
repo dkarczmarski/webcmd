@@ -18,7 +18,7 @@ type CommandExecutor interface {
 	RunCommand(ctx context.Context, cmd *config.URLCommand, params map[string]interface{}) CommandResult
 }
 
-func HandleURLCommand(
+func URLCommandHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,
 	configuration *config.Config,
