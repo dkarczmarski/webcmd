@@ -18,12 +18,12 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("success loading config", func(t *testing.T) {
 		t.Parallel()
 
-		cfg, err := config.LoadConfigFromFile(configPath)
+		configuration, err := config.LoadConfigFromFile(configPath)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		if cfg == nil {
+		if configuration == nil {
 			t.Fatal("expected config to be not nil")
 		}
 
@@ -61,8 +61,8 @@ func TestLoadConfig(t *testing.T) {
 			},
 		}
 
-		if !reflect.DeepEqual(cfg, expected) {
-			t.Errorf("config mismatch\nexpected: %+v\ngot: %+v", expected, cfg)
+		if !reflect.DeepEqual(configuration, expected) {
+			t.Errorf("config mismatch\nexpected: %+v\ngot: %+v", expected, configuration)
 		}
 	})
 

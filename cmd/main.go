@@ -8,12 +8,12 @@ import (
 )
 
 func main() {
-	cfg, err := config.LoadConfigFromFile("test-config.yaml")
+	configuration, err := config.LoadConfigFromFile("test-config.yaml")
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	srv := server.New(cfg, server.WithAddr(cfg.Server.Address))
+	srv := server.New(configuration, server.WithAddr(configuration.Server.Address))
 
 	log.Printf("Starting server")
 
