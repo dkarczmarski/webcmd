@@ -1,31 +1,23 @@
 package main
 
 import (
-	"context"
 	"log"
 
-	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
-	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
+	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/server"
 )
 
 func main() {
-	ctx := context.Background()
-
-	template := "echo\n{{.Param1}}\n{{.Param2}}"
-	params := map[string]interface{}{
-		"Param1": "AAA",
-		"Param2": "123",
-	}
-
-	buildResult, err := cmdbuilder.BuildCommand(template, params)
+	cfg, err := config.LoadConfigFromFile("test-config.yaml")
 	if err != nil {
-		log.Fatalf("Error building command: %v", err)
+		log.Fatalf("Error loading config: %v", err)
 	}
 
-	timeout := 5
+	srv := server.New(cfg)
 
-	result := cmdrunner.RunCommand(ctx, buildResult.Command, buildResult.Arguments, timeout)
+	log.Printf("Starting server")
 
-	log.Printf("Exit Code: %d\n", result.ExitCode)
-	log.Printf("Output: %s\n", result.Output)
+	if err := srv.Start(); err != nil {
+		log.Fatalf("Error starting server: %v", err)
+	}
 }

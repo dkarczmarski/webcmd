@@ -1,3 +1,7 @@
+run:
+  build-tags:
+    - integration
+
 linters:
   enable-all: true
   disable:

@@ -1,0 +1,5 @@
+### Test echo command
+POST http://localhost:8080/cmd/echo?param1=hello123
+
+### Test date command
+GET http://localhost:8080/cmd/date

@@ -18,3 +18,6 @@ dev-lint:
 
 test:
 	go test -v ./...
+
+test-all:
+	go test -v -count=1 -tags=integration ./...

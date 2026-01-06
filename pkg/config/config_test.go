@@ -18,7 +18,7 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("success loading config", func(t *testing.T) {
 		t.Parallel()
 
-		cfg, err := config.LoadConfig(configPath)
+		cfg, err := config.LoadConfigFromFile(configPath)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -50,7 +50,7 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("file not found", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := config.LoadConfig("non-existent-file.yaml")
+		_, err := config.LoadConfigFromFile("non-existent-file.yaml")
 		if err == nil {
 			t.Fatal("expected error for non-existent file, got nil")
 		}

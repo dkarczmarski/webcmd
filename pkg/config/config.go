@@ -17,15 +17,19 @@ type URLCommand struct {
 	Timeout         int    `yaml:"timeout"`
 }
 
-func LoadConfig(path string) (*Config, error) {
+func LoadConfigFromFile(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
 	}
 
+	return LoadConfigFromString(string(data))
+}
+
+func LoadConfigFromString(content string) (*Config, error) {
 	var config Config
 
-	err = yaml.Unmarshal(data, &config)
+	err := yaml.Unmarshal([]byte(content), &config)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}

@@ -1,0 +1,11 @@
+urlCommands:
+  - url: POST /cmd/echo
+    commandTemplate: |
+      /bin/echo
+      {{.url.param1}}
+    timeout: 5
+  - url: GET /cmd/date
+    commandTemplate: |
+      /usr/bin/date
+      +%Y-%m-%d %H:%M:%S
+    timeout: 5
