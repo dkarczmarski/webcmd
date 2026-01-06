@@ -55,7 +55,9 @@ func (c *realCommand) ProcessState() *os.ProcessState {
 type RealRunner struct{}
 
 // Command creates a new Command.
-func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Command { //nolint:ireturn
+//
+//nolint:ireturn
+func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Command {
 	return &realCommand{exec.CommandContext(ctx, name, arg...)}
 }
 

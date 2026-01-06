@@ -18,9 +18,11 @@ func TestHandleURLCommand(t *testing.T) {
 	cfg := &config.Config{
 		URLCommands: []config.URLCommand{
 			{
-				URL:             "GET /test",
-				CommandTemplate: "echo test",
-				Timeout:         5,
+				URL: "GET /test",
+				CommandConfig: config.CommandConfig{
+					CommandTemplate: "echo test",
+					Timeout:         5,
+				},
 			},
 		},
 	}

@@ -30,14 +30,18 @@ func TestLoadConfig(t *testing.T) {
 		expected := &config.Config{
 			URLCommands: []config.URLCommand{
 				{
-					URL:             "POST /cmd/echo",
-					CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
-					Timeout:         5,
+					URL: "POST /cmd/echo",
+					CommandConfig: config.CommandConfig{
+						CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
+						Timeout:         5,
+					},
 				},
 				{
-					URL:             "POST /cmd/sleep",
-					CommandTemplate: "/usr/bin/sleep\n20\n",
-					Timeout:         30,
+					URL: "POST /cmd/sleep",
+					CommandConfig: config.CommandConfig{
+						CommandTemplate: "/usr/bin/sleep\n20\n",
+						Timeout:         30,
+					},
 				},
 			},
 		}

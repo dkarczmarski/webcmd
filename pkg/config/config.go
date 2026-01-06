@@ -11,10 +11,14 @@ type Config struct {
 	URLCommands []URLCommand `yaml:"urlCommands"`
 }
 
-type URLCommand struct {
-	URL             string `yaml:"url"`
+type CommandConfig struct {
 	CommandTemplate string `yaml:"commandTemplate"`
 	Timeout         int    `yaml:"timeout"`
+}
+
+type URLCommand struct {
+	URL           string `yaml:"url"`
+	CommandConfig `yaml:",inline"`
 }
 
 func LoadConfigFromFile(path string) (*Config, error) {
