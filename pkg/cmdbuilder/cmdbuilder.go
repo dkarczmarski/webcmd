@@ -14,7 +14,7 @@ type Result struct {
 	Arguments []string
 }
 
-// BuildCommand builds a command from a pattern and parameters.
+// BuildCommand parses the command template and executes it with the provided parameters to produce a Result.
 func BuildCommand(commandTemplate string, params map[string]interface{}) (Result, error) {
 	tmpl, err := template.New("command").Parse(commandTemplate)
 	if err != nil {

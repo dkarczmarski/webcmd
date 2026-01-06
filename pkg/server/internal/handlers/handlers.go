@@ -11,8 +11,10 @@ import (
 
 type contextKey string
 
+// CommandConfigKey is the context key used to store and retrieve the command configuration.
 const CommandConfigKey contextKey = "commandConfigKey"
 
+// AuthAndRouteMiddleware handles both user authorization and routing of requests to the appropriate command.
 func AuthAndRouteMiddleware(next http.HandlerFunc, configuration *config.Config) http.HandlerFunc {
 	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		authName := authorize(request, configuration)
@@ -85,15 +87,18 @@ func isAuthorized(foundURLCommand *config.URLCommand, authName string) bool {
 	return false
 }
 
+// CommandResult defines the outcome of a command execution, including an exit code and output string.
 type CommandResult struct {
 	ExitCode int
 	Output   string
 }
 
+// CommandExecutor is an interface for types that can build and run system commands.
 type CommandExecutor interface {
 	RunCommand(ctx context.Context, cmd *config.CommandConfig, params map[string]interface{}) CommandResult
 }
 
+// URLCommandHandler handles requests by extracting parameters and executing the associated command.
 func URLCommandHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,

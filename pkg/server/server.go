@@ -16,10 +16,12 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/server/internal/handlers"
 )
 
+// Server represents the HTTP server instance.
 type Server struct {
 	httpServer *http.Server
 }
 
+// Options defines the configuration options for the Server.
 type Options struct {
 	Addr     string
 	Executor handlers.CommandExecutor
@@ -27,6 +29,7 @@ type Options struct {
 
 type defaultExecutor struct{}
 
+// RunCommand builds and executes a command based on the provided configuration and parameters.
 func (e *defaultExecutor) RunCommand(
 	ctx context.Context,
 	commandConfig *config.CommandConfig,
@@ -59,12 +62,14 @@ const (
 	idleTimeout       = 120 * time.Second
 )
 
+// WithAddr returns an option function that sets the server address.
 func WithAddr(addr string) func(*Options) {
 	return func(o *Options) {
 		o.Addr = addr
 	}
 }
 
+// New creates and initializes a new Server instance with the given configuration and options.
 func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	options := Options{
 		Addr:     "127.0.0.1:8080",
@@ -96,10 +101,12 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	}
 }
 
+// ServeHTTP implements the http.Handler interface by delegating to the underlying HTTP server.
 func (s *Server) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
 	s.httpServer.Handler.ServeHTTP(responseWriter, request)
 }
 
+// Start begins listening for and serving HTTP requests.
 func (s *Server) Start() error {
 	if err := s.httpServer.ListenAndServe(); err != nil {
 		return fmt.Errorf("listen and serve: %w", err)
