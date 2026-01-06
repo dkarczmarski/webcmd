@@ -19,17 +19,20 @@ var testConfigYaml string
 func TestServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	cfg, err := config.LoadConfigFromString(testConfigYaml)
+	configuration, err := config.LoadConfigFromString(testConfigYaml)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	srv := server.New(cfg)
+	srv := server.New(configuration)
 
 	t.Run("POST /cmd/echo", func(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodPost, "/cmd/echo?param1=hello", nil)
+
+		req.Header.Set("X-Api-Key", "ABC111")
+
 		rec := httptest.NewRecorder()
 
 		srv.ServeHTTP(rec, req)
@@ -66,6 +69,9 @@ func TestServerIntegration(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequest(http.MethodGet, "/cmd/non-existent", nil)
+
+		req.Header.Set("X-Api-Key", "ABC111")
+
 		rec := httptest.NewRecorder()
 
 		srv.ServeHTTP(rec, req)

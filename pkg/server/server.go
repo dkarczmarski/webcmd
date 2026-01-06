@@ -1,7 +1,7 @@
 // Package server provides HTTP server for running commands.
 package server
 
-//go:generate mockgen -typed -source=server.go -destination=internal/mocks/mock_server.go -package=mocks
+//go:generate mockgen -typed -destination=internal/mocks/mock_server.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/internal/handlers CommandExecutor
 
 import (
 	"context"
@@ -29,10 +29,10 @@ type defaultExecutor struct{}
 
 func (e *defaultExecutor) RunCommand(
 	ctx context.Context,
-	cmd *config.URLCommand,
+	commandConfig *config.CommandConfig,
 	params map[string]interface{},
 ) handlers.CommandResult {
-	cmdResult, err := cmdbuilder.BuildCommand(cmd.CommandTemplate, params)
+	cmdResult, err := cmdbuilder.BuildCommand(commandConfig.CommandTemplate, params)
 	if err != nil {
 		log.Printf("BuildCommand error: %v", err)
 
@@ -44,7 +44,7 @@ func (e *defaultExecutor) RunCommand(
 
 	log.Printf("BuildCommand result: %+v", cmdResult)
 
-	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, cmd.Timeout)
+	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, commandConfig.Timeout)
 
 	return handlers.CommandResult{
 		ExitCode: res.ExitCode,
@@ -76,9 +76,10 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(responseWriter http.ResponseWriter, request *http.Request) {
-		handlers.URLCommandHandler(responseWriter, request, configuration, options.Executor)
-	})
+	urlCommandHandler := func(responseWriter http.ResponseWriter, request *http.Request) {
+		handlers.URLCommandHandler(responseWriter, request, options.Executor)
+	}
+	mux.HandleFunc("/", handlers.AuthAndRouteMiddleware(urlCommandHandler, configuration))
 
 	//nolint:exhaustruct
 	httpServer := &http.Server{
