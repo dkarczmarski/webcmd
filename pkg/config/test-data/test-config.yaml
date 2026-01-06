@@ -1,0 +1,12 @@
+urlCommands:
+  - url: POST /cmd/echo
+    commandTemplate: |
+      /bin/echo
+      {{.param1}}
+      {{.param2}}
+    timeout: 5
+  - url: POST /cmd/sleep
+    commandTemplate: |
+      /usr/bin/sleep
+      20
+    timeout: 30
