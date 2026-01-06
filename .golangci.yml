@@ -1,0 +1,8 @@
+linters:
+  enable-all: true
+  disable:
+    - tenv
+
+linters-settings:
+  lll:
+    line-length: 120
