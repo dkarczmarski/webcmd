@@ -8,12 +8,18 @@ import (
 )
 
 type Config struct {
-	Server      ServerConfig `yaml:"server"`
-	URLCommands []URLCommand `yaml:"urlCommands"`
+	Server        ServerConfig          `yaml:"server"`
+	Authorization []AuthorizationConfig `yaml:"authorization"`
+	URLCommands   []URLCommand          `yaml:"urlCommands"`
 }
 
 type ServerConfig struct {
 	Address string `yaml:"address"`
+}
+
+type AuthorizationConfig struct {
+	Name string `yaml:"name"`
+	Key  string `yaml:"key"`
 }
 
 type CommandConfig struct {
@@ -22,8 +28,9 @@ type CommandConfig struct {
 }
 
 type URLCommand struct {
-	URL           string `yaml:"url"`
-	CommandConfig `yaml:",inline"`
+	URL               string `yaml:"url"`
+	AuthorizationName string `yaml:"authorizationName"`
+	CommandConfig     `yaml:",inline"`
 }
 
 func LoadConfigFromFile(path string) (*Config, error) {

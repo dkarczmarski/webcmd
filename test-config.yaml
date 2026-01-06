@@ -1,7 +1,13 @@
 server:
   address: ":8080"
+authorization:
+  - name: auth-name1
+    key: ABC111
+  - name: auth-name2
+    key: ABC222
 urlCommands:
   - url: POST /cmd/echo
+    authorizationName: auth-name1,auth-name2
     commandTemplate: |
       /bin/echo
       {{.url.param1}}

@@ -31,16 +31,28 @@ func TestLoadConfig(t *testing.T) {
 			Server: config.ServerConfig{
 				Address: ":8080",
 			},
+			Authorization: []config.AuthorizationConfig{
+				{
+					Name: "auth-name1",
+					Key:  "ABC111",
+				},
+				{
+					Name: "auth-name2",
+					Key:  "ABC222",
+				},
+			},
 			URLCommands: []config.URLCommand{
 				{
-					URL: "POST /cmd/echo",
+					URL:               "POST /cmd/echo",
+					AuthorizationName: "auth-name1,auth-name2",
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
 						Timeout:         5,
 					},
 				},
 				{
-					URL: "POST /cmd/sleep",
+					URL:               "POST /cmd/sleep",
+					AuthorizationName: "",
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/usr/bin/sleep\n20\n",
 						Timeout:         30,
