@@ -8,7 +8,12 @@ import (
 )
 
 type Config struct {
+	Server      ServerConfig `yaml:"server"`
 	URLCommands []URLCommand `yaml:"urlCommands"`
+}
+
+type ServerConfig struct {
+	Address string `yaml:"address"`
 }
 
 type CommandConfig struct {

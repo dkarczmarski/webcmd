@@ -1,3 +1,5 @@
+server:
+  address: ":8080"
 urlCommands:
   - url: POST /cmd/echo
     commandTemplate: |

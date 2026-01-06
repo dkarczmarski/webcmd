@@ -28,6 +28,9 @@ func TestLoadConfig(t *testing.T) {
 		}
 
 		expected := &config.Config{
+			Server: config.ServerConfig{
+				Address: ":8080",
+			},
 			URLCommands: []config.URLCommand{
 				{
 					URL: "POST /cmd/echo",

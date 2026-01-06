@@ -59,6 +59,12 @@ const (
 	idleTimeout       = 120 * time.Second
 )
 
+func WithAddr(addr string) func(*Options) {
+	return func(o *Options) {
+		o.Addr = addr
+	}
+}
+
 func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	options := Options{
 		Addr:     "127.0.0.1:8080",

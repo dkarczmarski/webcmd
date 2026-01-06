@@ -13,7 +13,7 @@ func main() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	srv := server.New(cfg)
+	srv := server.New(cfg, server.WithAddr(cfg.Server.Address))
 
 	log.Printf("Starting server")
 
