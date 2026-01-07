@@ -167,7 +167,62 @@ Each entry contains:
 * `timeout` *(optional)*
   Timeout in seconds for the command execution
 
-Example:
+* `bodyAsText` *(optional)*
+  If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `false`.
+
+* `bodyAsJson` *(optional)*
+  If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`. 
+  - Allows access to individual fields, e.g., `{{.bodyAsJson.field_name}}`.
+  - Using `{{.bodyAsJson}}` without a field will insert the full, valid JSON string.
+  - Requires a valid `Content-Type: application/json` header.
+  - Default: `false`.
+
+Example 1 - Using `bodyAsText`:
+
+```yaml
+urlCommands:
+  - url: POST /echo-text
+    bodyAsText: true
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsText}}
+```
+
+Call the endpoint:
+
+```sh
+curl -X POST http://localhost:8080/echo-text \
+     -d "Hello from request body"
+```
+
+Example 2 - Using `bodyAsJson`:
+
+```yaml
+urlCommands:
+  - url: POST /deploy
+    bodyAsJson: true
+    commandTemplate: |
+      /usr/local/bin/deploy.sh
+      --project
+      {{.bodyAsJson.project_name}}
+      --payload
+      {{.bodyAsJson}}
+```
+
+Call the endpoint:
+
+```sh
+curl -X POST http://localhost:8080/deploy \
+     -H "Content-Type: application/json" \
+     -d '{"project_name": "my-app", "version": "1.0.1"}'
+```
+
+In the above example:
+- `{{.bodyAsJson.project_name}}` will be replaced by `my-app`.
+- `{{.bodyAsJson}}` will be replaced by the full JSON string: `{"project_name":"my-app","version":"1.0.1"}`.
+
+Example 3:
 
 ```yaml
 urlCommands:
