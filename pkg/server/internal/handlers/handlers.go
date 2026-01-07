@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -21,14 +22,15 @@ func AuthAndRouteMiddleware(next http.HandlerFunc, configuration *config.Config)
 		foundURLCommand, found := findURLCommand(request, configuration)
 
 		if !found {
+			log.Printf("Not Found: %s %s", request.Method, request.URL.Path)
 			http.NotFound(responseWriter, request)
 
 			return
 		}
 
 		if !isAuthorized(foundURLCommand, authName) {
+			log.Printf("Forbidden: %s %s (User: %s)", request.Method, request.URL.Path, authName)
 			responseWriter.WriteHeader(http.StatusForbidden)
-			_, _ = fmt.Fprintf(responseWriter, "Forbidden: user %s not authorized for this command", authName)
 
 			return
 		}
@@ -107,6 +109,7 @@ func URLCommandHandler(
 	commandConfig, ok := request.Context().Value(CommandConfigKey).(*config.CommandConfig)
 
 	if !ok || commandConfig == nil {
+		log.Printf("Internal Server Error: command configuration missing in context")
 		responseWriter.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(responseWriter, "Internal Server Error: command configuration missing")
 
@@ -117,9 +120,12 @@ func URLCommandHandler(
 	params := map[string]interface{}{
 		"url": queryParams,
 	}
+
+	log.Printf("Executing command for: %s %s", request.Method, request.URL.Path)
 	runResult := executor.RunCommand(request.Context(), commandConfig, params)
 
 	if runResult.ExitCode != 0 {
+		log.Printf("Command execution failed (Exit Code: %d): %s", runResult.ExitCode, runResult.Output)
 		responseWriter.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(responseWriter, "Command failed with exit code %d\nOutput: %s",
 			runResult.ExitCode, runResult.Output)
@@ -127,6 +133,7 @@ func URLCommandHandler(
 		return
 	}
 
+	log.Printf("Command execution successful")
 	_, _ = fmt.Fprint(responseWriter, runResult.Output)
 }
 

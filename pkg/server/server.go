@@ -45,9 +45,10 @@ func (e *defaultExecutor) RunCommand(
 		}
 	}
 
-	log.Printf("BuildCommand result: %+v", cmdResult)
-
+	log.Printf("Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
 	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, commandConfig.Timeout)
+
+	log.Printf("Command execution result: %+v", res)
 
 	return handlers.CommandResult{
 		ExitCode: res.ExitCode,
