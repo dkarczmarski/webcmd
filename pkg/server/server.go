@@ -18,7 +18,8 @@ import (
 
 // Server represents the HTTP server instance.
 type Server struct {
-	httpServer *http.Server
+	httpServer    *http.Server
+	configuration *config.Config
 }
 
 // Options defines the configuration options for the Server.
@@ -99,7 +100,8 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	}
 
 	return &Server{
-		httpServer: httpServer,
+		httpServer:    httpServer,
+		configuration: configuration,
 	}
 }
 
@@ -110,8 +112,18 @@ func (s *Server) ServeHTTP(responseWriter http.ResponseWriter, request *http.Req
 
 // Start begins listening for and serving HTTP requests.
 func (s *Server) Start() error {
-	if err := s.httpServer.ListenAndServe(); err != nil {
-		return fmt.Errorf("listen and serve: %w", err)
+	httpsConfig := s.configuration.Server.HTTPSConfig
+	if httpsConfig.Enabled {
+		certFile := httpsConfig.CertFile
+		keyFile := httpsConfig.KeyFile
+
+		if err := s.httpServer.ListenAndServeTLS(certFile, keyFile); err != nil {
+			return fmt.Errorf("listen and serve TLS: %w", err)
+		}
+	} else {
+		if err := s.httpServer.ListenAndServe(); err != nil {
+			return fmt.Errorf("listen and serve: %w", err)
+		}
 	}
 
 	return nil
