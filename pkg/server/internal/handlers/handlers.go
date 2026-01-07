@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -108,15 +109,9 @@ func URLCommandHandler(
 	request *http.Request,
 	executor CommandExecutor,
 ) {
-	commandConfig, ok := request.Context().Value(CommandConfigKey).(*config.CommandConfig)
-
-	if !ok || commandConfig == nil {
-		log.Printf("Internal Server Error: command configuration missing in context")
-		responseWriter.WriteHeader(http.StatusInternalServerError)
-
-		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: command configuration missing"); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
+	commandConfig := getCommandConfig(responseWriter, request)
+	if commandConfig == nil {
+		log.Printf("Internal Server Error: no command configuration found in context")
 
 		return
 	}
@@ -127,6 +122,12 @@ func URLCommandHandler(
 	}
 
 	if err := processBodyAsText(request, commandConfig, params, responseWriter); err != nil {
+		log.Printf("Internal Server Error: %v", err)
+
+		return
+	}
+
+	if err := processBodyAsJSON(request, commandConfig, params, responseWriter); err != nil {
 		log.Printf("Internal Server Error: %v", err)
 
 		return
@@ -176,6 +177,19 @@ func extractQueryParams(request *http.Request) map[string]string {
 	return params
 }
 
+func getCommandConfig(responseWriter http.ResponseWriter, request *http.Request) *config.CommandConfig {
+	commandConfig, ok := request.Context().Value(CommandConfigKey).(*config.CommandConfig)
+
+	if !ok || commandConfig == nil {
+		log.Printf("Internal Server Error: command configuration missing in context")
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+
+		return nil
+	}
+
+	return commandConfig
+}
+
 func processBodyAsText(
 	request *http.Request,
 	commandConfig *config.CommandConfig,
@@ -198,6 +212,54 @@ func processBodyAsText(
 	}
 
 	params["bodyAsText"] = string(bodyBytes)
+
+	return nil
+}
+
+type JSONBody map[string]interface{}
+
+func (j JSONBody) String() string {
+	b, err := json.Marshal(j)
+	if err != nil {
+		return fmt.Sprintf("error marshaling json: %v", err)
+	}
+
+	return string(b)
+}
+
+func processBodyAsJSON(
+	request *http.Request,
+	commandConfig *config.CommandConfig,
+	params map[string]interface{},
+	responseWriter http.ResponseWriter,
+) error {
+	if !commandConfig.BodyAsJSON {
+		return nil
+	}
+
+	bodyBytes, err := io.ReadAll(request.Body)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+
+		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: failed to read request body"); err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
+
+		return fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	var bodyJSON JSONBody
+	if err := json.Unmarshal(bodyBytes, &bodyJSON); err != nil {
+		responseWriter.WriteHeader(http.StatusBadRequest)
+
+		if _, err := fmt.Fprintf(responseWriter, "Bad Request: failed to parse JSON body"); err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
+
+		return fmt.Errorf("failed to parse JSON body: %w", err)
+	}
+
+	params["bodyAsJson"] = bodyJSON
 
 	return nil
 }

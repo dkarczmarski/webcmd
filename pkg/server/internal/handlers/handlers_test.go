@@ -305,6 +305,50 @@ func TestURLCommandHandler(t *testing.T) {
 			t.Errorf("expected body %q, got %q", expectedBody, recorder.Body.String())
 		}
 	})
+
+	t.Run("body as json", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
+
+		bodyContent := `{"key1": "value1", "key2": 123}`
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(bodyContent))
+		recorder := httptest.NewRecorder()
+
+		cmdConfig := &config.CommandConfig{
+			CommandTemplate: "echo {{.bodyAsJson.key1}}",
+			BodyAsJSON:      true,
+		}
+
+		mockExecutor.EXPECT().
+			RunCommand(gomock.Any(), cmdConfig, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *config.CommandConfig, params map[string]interface{}) handlers.CommandResult {
+				bodyJSON, ok := params["bodyAsJson"].(handlers.JSONBody)
+				if !ok {
+					t.Errorf("expected bodyAsJson to be handlers.JSONBody, got %T", params["bodyAsJson"])
+
+					return handlers.CommandResult{ExitCode: 1}
+				}
+
+				if bodyJSON["key1"] != "value1" {
+					t.Errorf("expected key1 to be 'value1', got %v", bodyJSON["key1"])
+				}
+
+				if bodyJSON["key2"] != 123.0 {
+					t.Errorf("expected key2 to be 123, got %v", bodyJSON["key2"])
+				}
+
+				return handlers.CommandResult{ExitCode: 0, Output: "ok"}
+			})
+
+		ctx := context.WithValue(req.Context(), handlers.CommandConfigKey, cmdConfig)
+		handlers.URLCommandHandler(recorder, req.WithContext(ctx), mockExecutor)
+
+		if recorder.Code != http.StatusOK {
+			t.Errorf("expected status OK, got %d. Body: %s", recorder.Code, recorder.Body.String())
+		}
+	})
 }
 
 type errorReader struct {

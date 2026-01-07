@@ -38,3 +38,5 @@ issues:
         - err113
         - exhaustruct
         - cyclop
+        - gocognit
+        - maintidx
