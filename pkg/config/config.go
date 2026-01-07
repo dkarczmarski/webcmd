@@ -20,10 +20,14 @@ type ServerConfig struct {
 	HTTPSConfig ServerHTTPSConfig `yaml:"https"`
 }
 
+// ServerHTTPSConfig contains the configuration for the HTTPS server.
 type ServerHTTPSConfig struct {
-	Enabled  bool   `yaml:"enabled"`
+	// Enabled specifies whether HTTPS is enabled.
+	Enabled bool `yaml:"enabled"`
+	// CertFile is the path to the SSL certificate file.
 	CertFile string `yaml:"certFile"`
-	KeyFile  string `yaml:"keyFile"`
+	// KeyFile is the path to the SSL key file.
+	KeyFile string `yaml:"keyFile"`
 }
 
 // AuthorizationConfig defines the credentials and permissions for users.
