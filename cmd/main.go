@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
@@ -8,7 +9,10 @@ import (
 )
 
 func main() {
-	configuration, err := config.LoadConfigFromFile("test-config.yaml")
+	configPath := flag.String("config", "config.yaml", "path to the configuration file")
+	flag.Parse()
+
+	configuration, err := config.LoadConfigFromFile(*configPath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}
