@@ -111,7 +111,10 @@ func URLCommandHandler(
 	if !ok || commandConfig == nil {
 		log.Printf("Internal Server Error: command configuration missing in context")
 		responseWriter.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(responseWriter, "Internal Server Error: command configuration missing")
+
+		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: command configuration missing"); err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
 
 		return
 	}
@@ -127,14 +130,20 @@ func URLCommandHandler(
 	if runResult.ExitCode != 0 {
 		log.Printf("Command execution failed (Exit Code: %d): %s", runResult.ExitCode, runResult.Output)
 		responseWriter.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(responseWriter, "Command failed with exit code %d\nOutput: %s",
-			runResult.ExitCode, runResult.Output)
+
+		if _, err := fmt.Fprintf(responseWriter, "Command failed with exit code %d\nOutput: %s",
+			runResult.ExitCode, runResult.Output); err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
 
 		return
 	}
 
 	log.Printf("Command execution successful")
-	_, _ = fmt.Fprint(responseWriter, runResult.Output)
+
+	if _, err := fmt.Fprint(responseWriter, runResult.Output); err != nil {
+		log.Printf("Failed to write response: %v", err)
+	}
 }
 
 func extractQueryParams(request *http.Request) map[string]string {
