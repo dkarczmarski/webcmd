@@ -39,6 +39,8 @@ type AuthorizationConfig struct {
 // CommandConfig contains the configuration for a specific command execution.
 type CommandConfig struct {
 	CommandTemplate string `yaml:"commandTemplate"`
+	BodyAsText      bool   `yaml:"bodyAsText"`
+	BodyAsJSON      bool   `yaml:"bodyAsJson"`
 	Timeout         int    `yaml:"timeout"`
 }
 
