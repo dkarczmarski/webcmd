@@ -65,6 +65,25 @@ func TestServerIntegration(t *testing.T) {
 		}
 	})
 
+	t.Run("POST /cmd/echo-text", func(t *testing.T) {
+		t.Parallel()
+
+		body := "hello from body"
+		req := httptest.NewRequest(http.MethodPost, "/cmd/echo-text", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected status code %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+
+		expectedOutput := body
+		if rec.Body.String() != expectedOutput {
+			t.Errorf("Expected output %q, got %q", expectedOutput, rec.Body.String())
+		}
+	})
+
 	t.Run("404 Not Found", func(t *testing.T) {
 		t.Parallel()
 

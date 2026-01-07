@@ -37,3 +37,4 @@ issues:
         - funlen
         - err113
         - exhaustruct
+        - cyclop

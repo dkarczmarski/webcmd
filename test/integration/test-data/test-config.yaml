@@ -15,3 +15,10 @@ urlCommands:
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
     timeout: 5
+  - url: POST /cmd/echo-text
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsText}}
+    bodyAsText: true
+    timeout: 5

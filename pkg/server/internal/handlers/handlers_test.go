@@ -2,9 +2,11 @@ package handlers_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
@@ -239,4 +241,76 @@ func TestURLCommandHandler(t *testing.T) {
 			t.Errorf("expected status OK, got %d", recorder.Code)
 		}
 	})
+
+	t.Run("body as text", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
+
+		bodyContent := "hello world body"
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(bodyContent))
+		recorder := httptest.NewRecorder()
+
+		cmdConfig := &config.CommandConfig{
+			CommandTemplate: "echo {{.bodyAsText}}",
+			BodyAsText:      true,
+		}
+
+		mockExecutor.EXPECT().
+			RunCommand(gomock.Any(), cmdConfig, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *config.CommandConfig, params map[string]interface{}) handlers.CommandResult {
+				if params["bodyAsText"] != bodyContent {
+					t.Errorf("expected bodyAsText %q, got %q", bodyContent, params["bodyAsText"])
+				}
+
+				return handlers.CommandResult{ExitCode: 0, Output: "ok"}
+			})
+
+		ctx := context.WithValue(req.Context(), handlers.CommandConfigKey, cmdConfig)
+		handlers.URLCommandHandler(recorder, req.WithContext(ctx), mockExecutor)
+
+		if recorder.Code != http.StatusOK {
+			t.Errorf("expected status OK, got %d", recorder.Code)
+		}
+	})
+
+	t.Run("body as text error", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
+
+		// Create a reader that returns an error
+		errReader := &errorReader{err: errors.New("read error")}
+		req := httptest.NewRequest(http.MethodPost, "/test", errReader)
+		recorder := httptest.NewRecorder()
+
+		cmdConfig := &config.CommandConfig{
+			CommandTemplate: "echo {{.bodyAsText}}",
+			BodyAsText:      true,
+		}
+
+		// No RunCommand call expected since it should fail before
+
+		ctx := context.WithValue(req.Context(), handlers.CommandConfigKey, cmdConfig)
+		handlers.URLCommandHandler(recorder, req.WithContext(ctx), mockExecutor)
+
+		if recorder.Code != http.StatusInternalServerError {
+			t.Errorf("expected status InternalServerError, got %d", recorder.Code)
+		}
+
+		expectedBody := "Internal Server Error: failed to read request body"
+		if recorder.Body.String() != expectedBody {
+			t.Errorf("expected body %q, got %q", expectedBody, recorder.Body.String())
+		}
+	})
+}
+
+type errorReader struct {
+	err error
+}
+
+func (r *errorReader) Read(_ []byte) (int, error) {
+	return 0, r.err
 }

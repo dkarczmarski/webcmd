@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -125,6 +126,12 @@ func URLCommandHandler(
 		"url": queryParams,
 	}
 
+	if err := processBodyAsText(request, commandConfig, params, responseWriter); err != nil {
+		log.Printf("Internal Server Error: %v", err)
+
+		return
+	}
+
 	log.Printf("Executing command for: %s %s", request.Method, request.URL.Path)
 
 	ctx := request.Context()
@@ -167,4 +174,30 @@ func extractQueryParams(request *http.Request) map[string]string {
 	}
 
 	return params
+}
+
+func processBodyAsText(
+	request *http.Request,
+	commandConfig *config.CommandConfig,
+	params map[string]interface{},
+	responseWriter http.ResponseWriter,
+) error {
+	if !commandConfig.BodyAsText {
+		return nil
+	}
+
+	bodyBytes, err := io.ReadAll(request.Body)
+	if err != nil {
+		responseWriter.WriteHeader(http.StatusInternalServerError)
+
+		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: failed to read request body"); err != nil {
+			log.Printf("Failed to write response: %v", err)
+		}
+
+		return fmt.Errorf("failed to read request body: %w", err)
+	}
+
+	params["bodyAsText"] = string(bodyBytes)
+
+	return nil
 }
