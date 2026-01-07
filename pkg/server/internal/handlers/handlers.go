@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
 )
@@ -125,7 +126,16 @@ func URLCommandHandler(
 	}
 
 	log.Printf("Executing command for: %s %s", request.Method, request.URL.Path)
-	runResult := executor.RunCommand(request.Context(), commandConfig, params)
+
+	ctx := request.Context()
+
+	if commandConfig.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(commandConfig.Timeout)*time.Second)
+		defer cancel()
+	}
+
+	runResult := executor.RunCommand(ctx, commandConfig, params)
 
 	if runResult.ExitCode != 0 {
 		log.Printf("Command execution failed (Exit Code: %d): %s", runResult.ExitCode, runResult.Output)

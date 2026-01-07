@@ -46,7 +46,8 @@ func (e *defaultExecutor) RunCommand(
 	}
 
 	log.Printf("Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
-	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, commandConfig.Timeout)
+
+	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments)
 
 	log.Printf("Command execution result: %+v", res)
 

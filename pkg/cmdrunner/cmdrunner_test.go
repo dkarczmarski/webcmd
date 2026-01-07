@@ -1,7 +1,6 @@
 package cmdrunner_test
 
 import (
-	"context"
 	"errors"
 	"io"
 	"testing"
@@ -35,7 +34,7 @@ func TestRunCommandWithRunner(t *testing.T) {
 		mockCommand.EXPECT().Run().Return(nil)
 		mockCommand.EXPECT().ProcessState().Return(nil) // nil means exit code 0 in our logic if err is nil
 
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, 0)
+		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args)
 
 		if result.ExitCode != 0 {
 			t.Errorf("expected exit code 0, got %d", result.ExitCode)
@@ -68,44 +67,10 @@ func TestRunCommandWithRunner(t *testing.T) {
 		// Or if we want to test ExitCode() extraction, we'd need a real ExitError.
 		mockCommand.EXPECT().Run().Return(errors.New("some error"))
 
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, 0)
+		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args)
 
 		if result.ExitCode != -1 {
 			t.Errorf("expected exit code -1 for generic error, got %d", result.ExitCode)
-		}
-	})
-
-	t.Run("timeout", func(t *testing.T) {
-		t.Parallel()
-		ctrl := gomock.NewController(t)
-		mockRunner := mocks.NewMockRunner(ctrl)
-		mockCommand := mocks.NewMockCommand(ctrl)
-
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-
-		cmdName := "sleep"
-		args := []string{"10"}
-
-		mockRunner.EXPECT().
-			Command(gomock.Any(), cmdName, "10").
-			Return(mockCommand)
-
-		mockCommand.EXPECT().SetStdout(gomock.Any())
-		mockCommand.EXPECT().SetStderr(gomock.Any())
-
-		// Simulate timeout error
-		mockCommand.EXPECT().Run().Return(context.Canceled)
-
-		// Using timeoutSeconds 0 to avoid another timeout layer.
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, 0)
-
-		if result.ExitCode != -1 {
-			t.Errorf("expected exit code -1 for timeout, got %d", result.ExitCode)
-		}
-
-		if result.Output != "command timed out or canceled" {
-			t.Errorf("expected timeout message, got %q", result.Output)
 		}
 	})
 }

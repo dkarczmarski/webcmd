@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"time"
 )
 
 // Result represents the result of a command execution.
@@ -62,8 +61,8 @@ func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Co
 }
 
 // RunCommand runs a command and returns its result.
-func RunCommand(ctx context.Context, command string, arguments []string, timeoutSeconds int) Result {
-	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, timeoutSeconds)
+func RunCommand(ctx context.Context, command string, arguments []string) Result {
+	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments)
 }
 
 // RunCommandWithRunner runs a command using the provided runner.
@@ -72,22 +71,8 @@ func RunCommandWithRunner(
 	runner Runner,
 	command string,
 	arguments []string,
-	timeoutSeconds int,
 ) Result {
-	var (
-		runCtx context.Context
-		cancel context.CancelFunc
-	)
-
-	if timeoutSeconds > 0 {
-		runCtx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
-
-		defer cancel()
-	} else {
-		runCtx = ctx
-	}
-
-	cmd := runner.Command(runCtx, command, arguments...)
+	cmd := runner.Command(ctx, command, arguments...)
 
 	var output bytes.Buffer
 
@@ -96,7 +81,7 @@ func RunCommandWithRunner(
 
 	err := cmd.Run()
 
-	exitCode := determineExitCode(runCtx, cmd, err, &output)
+	exitCode := determineExitCode(ctx, cmd, err, &output)
 
 	return Result{
 		ExitCode: exitCode,
