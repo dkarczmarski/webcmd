@@ -13,6 +13,14 @@ dev-go-mockgen-install:
 dev-go-generate:
 	go generate ./...
 
+dev-generate-cert:
+	openssl req -x509 -newkey rsa:4096 \
+      -keyout key.pem \
+      -out cert.pem \
+      -days 365 \
+      -nodes \
+      -subj "/CN=localhost"
+
 dev-lint:
 	golangci-lint run
 
@@ -21,3 +29,7 @@ test:
 
 test-all:
 	go test -v -count=1 -tags=integration ./...
+
+test-https-local:
+	curl -k -X POST "https://localhost:8443/cmd/echo?message=hello123" \
+      -H "X-Api-Key: MYSECRETKEY"

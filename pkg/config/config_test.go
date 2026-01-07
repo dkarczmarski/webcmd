@@ -30,6 +30,11 @@ func TestLoadConfig(t *testing.T) {
 		expected := &config.Config{
 			Server: config.ServerConfig{
 				Address: ":8080",
+				HTTPSConfig: config.ServerHTTPSConfig{
+					Enabled:  true,
+					CertFile: "/etc/certs/cert.pem",
+					KeyFile:  "/etc/certs/key.pem",
+				},
 			},
 			Authorization: []config.AuthorizationConfig{
 				{

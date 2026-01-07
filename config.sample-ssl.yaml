@@ -1,0 +1,21 @@
+server:
+  address: ":8443"
+  https:
+    enabled: true
+    certFile: ./cert.pem
+    keyFile: ./key.pem
+authorization:
+  - name: auth-name1
+    key: MYSECRETKEY
+urlCommands:
+  - url: POST /cmd/echo
+    authorizationName: auth-name1
+    commandTemplate: |
+      /bin/echo
+      {{.url.message}}
+    timeout: 30
+  - url: GET /cmd/date
+    commandTemplate: |
+      /usr/bin/date
+      +%Y-%m-%d %H:%M:%S
+    timeout: 30

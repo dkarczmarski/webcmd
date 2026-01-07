@@ -103,17 +103,26 @@ curl -H "X-Api-Key: MYKEY123" \
 
 ### `server`
 
-* `address` - address the server listens on, in `host:port` format.
+* `address` *(optional)* - address the server listens on, in `host:port` format. Default: `"127.0.0.1:8080"`.
   Examples:
 
     * `":8080"`
     * `"localhost:8080"`
 
+* `https` *(optional)* - HTTPS configuration:
+    * `enabled` - enable or disable HTTPS. Default: `false`.
+    * `certFile` - path to the SSL certificate file
+    * `keyFile` - path to the SSL key file
+
 Example:
 
 ```yaml
 server:
-  address: ":8080"
+  address: ":8443"
+  https:
+    enabled: true
+    certFile: "./cert.pem"
+    keyFile: "./key.pem"
 ```
 
 ### `authorization`
