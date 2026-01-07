@@ -12,6 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Set up Go
@@ -23,3 +24,7 @@ jobs:
         run: go build -v ./...
       - name: Test
         run: go test -v -race ./...
+      - name: GolangCI-Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
