@@ -1,19 +1,17 @@
 server:
-  address: ":8080"
+  address: "localhost:8080"
 authorization:
   - name: auth-name1
-    key: ABC111
-  - name: auth-name2
-    key: ABC222
+    key: MYSECRETKEY
 urlCommands:
   - url: POST /cmd/echo
-    authorizationName: auth-name1,auth-name2
+    authorizationName: auth-name1
     commandTemplate: |
       /bin/echo
-      {{.url.param1}}
-    timeout: 5
+      {{.url.message}}
+    timeout: 30
   - url: GET /cmd/date
     commandTemplate: |
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
-    timeout: 5
+    timeout: 30

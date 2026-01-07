@@ -1,13 +1,13 @@
 ### Test echo command, missing key
-POST http://localhost:8080/cmd/echo?param1=hello123
-
-### Test echo command
-POST http://localhost:8080/cmd/echo?param1=hello123
-X-Api-Key: ABC111
+POST http://localhost:8080/cmd/echo?message=hello123
 
 ### Test echo command, invalid key
-POST http://localhost:8080/cmd/echo?param1=hello123
+POST http://localhost:8080/cmd/echo?message=hello123
 X-Api-Key: bad-key
+
+### Test echo command
+POST http://localhost:8080/cmd/echo?message=hello123
+X-Api-Key: MYSECRETKEY
 
 ### Test date command
 GET http://localhost:8080/cmd/date
