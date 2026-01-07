@@ -1,5 +1,9 @@
 server:
   address: ":8080"
+  https:
+    enabled: true
+    certFile: /etc/certs/cert.pem
+    keyFile: /etc/certs/key.pem
 authorization:
   - name: auth-name1
     key: ABC111

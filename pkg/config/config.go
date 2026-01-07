@@ -16,7 +16,14 @@ type Config struct {
 
 // ServerConfig holds the server-specific configuration settings.
 type ServerConfig struct {
-	Address string `yaml:"address"`
+	Address     string            `yaml:"address"`
+	HTTPSConfig ServerHTTPSConfig `yaml:"https"`
+}
+
+type ServerHTTPSConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	CertFile string `yaml:"certFile"`
+	KeyFile  string `yaml:"keyFile"`
 }
 
 // AuthorizationConfig defines the credentials and permissions for users.
