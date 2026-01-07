@@ -52,6 +52,8 @@ func TestLoadConfig(t *testing.T) {
 					AuthorizationName: "auth-name1,auth-name2",
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
+						BodyAsText:      true,
+						BodyAsJSON:      true,
 						Timeout:         5,
 					},
 				},
