@@ -1,7 +1,7 @@
 // Package handlers provides HTTP handlers and middleware for the server.
 package handlers
 
-//go:generate mockgen -typed -destination=../mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/internal/handlers CommandExecutor
+//go:generate mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
 
 import (
 	"context"

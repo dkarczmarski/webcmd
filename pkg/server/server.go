@@ -11,7 +11,7 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
-	"github.com/dkarczmarski/webcmd/pkg/server/internal/handlers"
+	"github.com/dkarczmarski/webcmd/pkg/server/handlers"
 )
 
 // Server represents the HTTP server instance.

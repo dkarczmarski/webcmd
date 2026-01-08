@@ -11,8 +11,8 @@ import (
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
-	"github.com/dkarczmarski/webcmd/pkg/server/internal/handlers"
-	"github.com/dkarczmarski/webcmd/pkg/server/internal/mocks"
+	"github.com/dkarczmarski/webcmd/pkg/server/handlers"
+	"github.com/dkarczmarski/webcmd/pkg/server/handlers/internal/mocks"
 	"go.uber.org/mock/gomock"
 )
 
