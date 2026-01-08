@@ -93,7 +93,7 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 					request.Method, request.URL.Path, err, debug.Stack(),
 				)
 			} else {
-				logger.Printf("[WARN]  %s %s: %v", request.Method, request.URL.Path, err)
+				logger.Printf("[WARN] %s %s: %v", request.Method, request.URL.Path, err)
 			}
 
 			if msg != "" {
