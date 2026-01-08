@@ -42,6 +42,7 @@ type CommandConfig struct {
 	BodyAsText      bool   `yaml:"bodyAsText"`
 	BodyAsJSON      bool   `yaml:"bodyAsJson"`
 	Timeout         int    `yaml:"timeout"`
+	OutputType      string `yaml:"outputType"`
 }
 
 // URLCommand maps an HTTP request (method and path) to a command configuration.
