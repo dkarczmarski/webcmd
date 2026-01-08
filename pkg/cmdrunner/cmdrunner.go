@@ -5,7 +5,6 @@ package cmdrunner
 //go:generate go run go.uber.org/mock/mockgen -typed -source=cmdrunner.go -destination=internal/mocks/mock_cmdrunner.go -package=mocks
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -61,15 +60,8 @@ func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Co
 }
 
 // RunCommand runs a command and returns its result.
-func RunCommand(ctx context.Context, command string, arguments []string) Result {
-	var output bytes.Buffer
-
-	exitCode := RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, &output)
-
-	return Result{
-		ExitCode: exitCode,
-		Output:   output.String(),
-	}
+func RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) int {
+	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, writer)
 }
 
 // RunCommandWithRunner runs a command using the provided runner.

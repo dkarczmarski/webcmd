@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -34,11 +35,13 @@ func (e *defaultExecutor) RunCommand(
 	command string,
 	arguments []string,
 ) handlers.CommandResult {
-	result := cmdrunner.RunCommand(ctx, command, arguments)
+	var output bytes.Buffer
+
+	exitCode := cmdrunner.RunCommand(ctx, command, arguments, &output)
 
 	return handlers.CommandResult{
-		ExitCode: result.ExitCode,
-		Output:   result.Output,
+		ExitCode: exitCode,
+		Output:   output.String(),
 	}
 }
 
