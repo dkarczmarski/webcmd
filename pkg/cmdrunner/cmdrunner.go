@@ -62,7 +62,14 @@ func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Co
 
 // RunCommand runs a command and returns its result.
 func RunCommand(ctx context.Context, command string, arguments []string) Result {
-	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments)
+	var output bytes.Buffer
+
+	exitCode := RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, &output)
+
+	return Result{
+		ExitCode: exitCode,
+		Output:   output.String(),
+	}
 }
 
 // RunCommandWithRunner runs a command using the provided runner.
@@ -71,30 +78,24 @@ func RunCommandWithRunner(
 	runner Runner,
 	command string,
 	arguments []string,
-) Result {
+	writer io.Writer,
+) int {
 	cmd := runner.Command(ctx, command, arguments...)
 
-	var output bytes.Buffer
-
-	cmd.SetStdout(&output)
-	cmd.SetStderr(&output)
+	cmd.SetStdout(writer)
+	cmd.SetStderr(writer)
 
 	err := cmd.Run()
 
-	exitCode := determineExitCode(ctx, cmd, err, &output)
+	exitCode := determineExitCode(ctx, cmd, err, writer)
 
-	return Result{
-		ExitCode: exitCode,
-		Output:   output.String(),
-	}
+	return exitCode
 }
 
-func determineExitCode(ctx context.Context, cmd Command, err error, output *bytes.Buffer) int {
+func determineExitCode(ctx context.Context, cmd Command, err error, writer io.Writer) int {
 	if err != nil {
 		if isTimeoutOrCanceled(ctx) {
-			if output.Len() == 0 {
-				_, _ = output.WriteString("command timed out or canceled")
-			}
+			_, _ = writer.Write([]byte("command timed out or canceled"))
 
 			return -1
 		}
