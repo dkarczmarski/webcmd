@@ -40,3 +40,4 @@ issues:
         - cyclop
         - gocognit
         - maintidx
+        - varnamelen

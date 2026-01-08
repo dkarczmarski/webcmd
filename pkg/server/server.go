@@ -1,8 +1,6 @@
 // Package server provides HTTP server for running commands.
 package server
 
-//go:generate mockgen -typed -destination=internal/mocks/mock_server.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/internal/handlers CommandExecutor
-
 import (
 	"context"
 	"fmt"
@@ -10,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/server/internal/handlers"
 )
 
@@ -30,31 +28,17 @@ type Options struct {
 
 type defaultExecutor struct{}
 
-// RunCommand builds and executes a command based on the provided configuration and parameters.
+// RunCommand executes a command based on the provided command and arguments.
 func (e *defaultExecutor) RunCommand(
 	ctx context.Context,
-	commandConfig *config.CommandConfig,
-	params map[string]interface{},
+	command string,
+	arguments []string,
 ) handlers.CommandResult {
-	cmdResult, err := cmdbuilder.BuildCommand(commandConfig.CommandTemplate, params)
-	if err != nil {
-		log.Printf("BuildCommand error: %v", err)
-
-		return handlers.CommandResult{
-			ExitCode: -1,
-			Output:   fmt.Sprintf("Error building command: %v", err),
-		}
-	}
-
-	log.Printf("Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
-
-	res := cmdrunner.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments)
-
-	log.Printf("Command execution result: %+v", res)
+	result := cmdrunner.RunCommand(ctx, command, arguments)
 
 	return handlers.CommandResult{
-		ExitCode: res.ExitCode,
-		Output:   res.Output,
+		ExitCode: result.ExitCode,
+		Output:   result.Output,
 	}
 }
 
@@ -84,10 +68,17 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	}
 
 	mux := http.NewServeMux()
-	urlCommandHandler := func(responseWriter http.ResponseWriter, request *http.Request) {
-		handlers.URLCommandHandler(responseWriter, request, options.Executor)
-	}
-	mux.HandleFunc("/", handlers.AuthAndRouteMiddleware(urlCommandHandler, configuration))
+	mux.Handle("/", httpx.ToHandler(
+		httpx.ErrorSink(log.Default()),
+		httpx.WithMiddleware(
+			httpx.Chain(
+				handlers.APIKeyMiddleware(configuration),
+				handlers.URLCommandMiddleware(configuration),
+				handlers.AuthorizationMiddleware(),
+				handlers.TimeoutMiddleware(),
+			),
+			handlers.ExecutionHandler(options.Executor),
+		)))
 
 	//nolint:exhaustruct
 	httpServer := &http.Server{

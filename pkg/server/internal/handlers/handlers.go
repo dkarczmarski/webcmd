@@ -1,8 +1,12 @@
+// Package handlers provides HTTP handlers and middleware for the server.
 package handlers
+
+//go:generate mockgen -typed -destination=../mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/internal/handlers CommandExecutor
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,86 +14,136 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/httpx"
+)
+
+var (
+	ErrUnauthorized          = errors.New("unauthorized")
+	ErrInvalidRequestContext = errors.New("invalid request context")
+	ErrCommandExecutionError = errors.New("command execution error")
 )
 
 type contextKey string
 
-// CommandConfigKey is the context key used to store and retrieve the command configuration.
-const CommandConfigKey contextKey = "commandConfigKey"
+// AuthNameKey is the context key used to store and retrieve the authorization name.
+const AuthNameKey contextKey = "authName"
 
-// AuthAndRouteMiddleware handles both user authorization and routing of requests to the appropriate command.
-func AuthAndRouteMiddleware(next http.HandlerFunc, configuration *config.Config) http.HandlerFunc {
-	return func(responseWriter http.ResponseWriter, request *http.Request) {
-		authName := authorize(request, configuration)
-		foundURLCommand, found := findURLCommand(request, configuration)
+// URLCommandKey is the context key used to store and retrieve the URL command.
+const URLCommandKey contextKey = "urlCommand"
 
-		if !found {
-			log.Printf("Not Found: %s %s", request.Method, request.URL.Path)
-			http.NotFound(responseWriter, request)
+// APIKeyMiddleware creates a new Middleware that reads X-Api-Key header
+// and finds the matching authorization name.
+func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
+	return func(next httpx.WebHandler) httpx.WebHandler {
+		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+			apiKey := request.Header.Get("X-Api-Key")
 
-			return
-		}
+			var authName string
 
-		if !isAuthorized(foundURLCommand, authName) {
-			log.Printf("Forbidden: %s %s (User: %s)", request.Method, request.URL.Path, authName)
-			responseWriter.WriteHeader(http.StatusForbidden)
+			if apiKey != "" {
+				for _, auth := range configuration.Authorization {
+					if auth.Key == apiKey {
+						authName = auth.Name
 
-			return
-		}
-
-		ctx := context.WithValue(request.Context(), CommandConfigKey, &foundURLCommand.CommandConfig)
-
-		next(responseWriter, request.WithContext(ctx))
-	}
-}
-
-func authorize(request *http.Request, configuration *config.Config) string {
-	apiKey := request.Header.Get("X-Api-Key")
-
-	if apiKey != "" {
-		for _, auth := range configuration.Authorization {
-			if auth.Key == apiKey {
-				return auth.Name
+						break
+					}
+				}
 			}
-		}
-	}
 
-	return ""
+			if authName != "" {
+				ctx := context.WithValue(request.Context(), AuthNameKey, authName)
+
+				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
+			}
+
+			return next.ServeHTTP(responseWriter, request)
+		})
+	}
 }
 
-func findURLCommand(request *http.Request, configuration *config.Config) (*config.URLCommand, bool) {
-	requestURL := fmt.Sprintf("%s %s", request.Method, request.URL.Path)
+// URLCommandMiddleware creates a new Middleware that finds the matching URL command
+// and adds it to the request context.
+func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
+	return func(next httpx.WebHandler) httpx.WebHandler {
+		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+			requestURL := request.Method + " " + request.URL.Path
 
-	for _, cmd := range configuration.URLCommands {
-		if strings.TrimSpace(cmd.URL) == requestURL {
-			cmdCopy := cmd
+			for _, cmd := range configuration.URLCommands {
+				if cmd.URL == requestURL {
+					ctx := context.WithValue(request.Context(), URLCommandKey, &cmd)
 
-			return &cmdCopy, true
-		}
+					return next.ServeHTTP(responseWriter, request.WithContext(ctx))
+				}
+			}
+
+			return next.ServeHTTP(responseWriter, request)
+		})
 	}
-
-	return nil, false
 }
 
-func isAuthorized(foundURLCommand *config.URLCommand, authName string) bool {
-	if foundURLCommand.AuthorizationName == "" {
-		return true
+// AuthorizationMiddleware creates a new Middleware that checks if the user is authorized
+// to execute the command based on the information in the request context.
+func AuthorizationMiddleware() httpx.Middleware {
+	return func(next httpx.WebHandler) httpx.WebHandler {
+		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+			cmd, err := getURLCommandFromContext(request)
+			if err != nil {
+				return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
+			}
+
+			if cmd.AuthorizationName == "" {
+				return next.ServeHTTP(responseWriter, request)
+			}
+
+			valAuth := request.Context().Value(AuthNameKey)
+			authName, _ := valAuth.(string)
+
+			if authName == "" {
+				return httpx.NewWebError(
+					fmt.Errorf("authentication required for %s: %w", cmd.URL, ErrUnauthorized),
+					http.StatusUnauthorized,
+					"Authentication required: please provide a valid API key.",
+				)
+			}
+
+			allowedNames := strings.Split(cmd.AuthorizationName, ",")
+			for _, name := range allowedNames {
+				if strings.TrimSpace(name) == authName {
+					return next.ServeHTTP(responseWriter, request)
+				}
+			}
+
+			return httpx.NewWebError(
+				fmt.Errorf("user '%s' not authorized for %s: %w", authName, cmd.URL, ErrUnauthorized),
+				http.StatusForbidden,
+				fmt.Sprintf("Access denied: user '%s' does not have permission to execute this command.", authName),
+			)
+		})
 	}
+}
 
-	if authName == "" {
-		return false
+// TimeoutMiddleware creates a new Middleware that sets a timeout for the request context
+// based on the configuration in the URLCommand.
+func TimeoutMiddleware() httpx.Middleware {
+	return func(next httpx.WebHandler) httpx.WebHandler {
+		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+			cmd, err := getURLCommandFromContext(request)
+			if err != nil {
+				return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
+			}
+
+			if cmd.Timeout > 0 {
+				ctx, cancel := context.WithTimeout(request.Context(), time.Duration(cmd.Timeout)*time.Second)
+				defer cancel()
+
+				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
+			}
+
+			return next.ServeHTTP(responseWriter, request)
+		})
 	}
-
-	allowedNames := strings.Split(foundURLCommand.AuthorizationName, ",")
-
-	for _, name := range allowedNames {
-		if strings.TrimSpace(name) == authName {
-			return true
-		}
-	}
-
-	return false
 }
 
 // CommandResult defines the outcome of a command execution, including an exit code and output string.
@@ -98,70 +152,44 @@ type CommandResult struct {
 	Output   string
 }
 
-// CommandExecutor is an interface for types that can build and run system commands.
+// CommandExecutor is an interface for types that can run system commands.
 type CommandExecutor interface {
-	RunCommand(ctx context.Context, cmd *config.CommandConfig, params map[string]interface{}) CommandResult
+	RunCommand(ctx context.Context, command string, arguments []string) CommandResult
 }
 
-// URLCommandHandler handles requests by extracting parameters and executing the associated command.
-func URLCommandHandler(
-	responseWriter http.ResponseWriter,
-	request *http.Request,
-	executor CommandExecutor,
-) {
-	commandConfig := getCommandConfig(responseWriter, request)
-	if commandConfig == nil {
-		log.Printf("Internal Server Error: no command configuration found in context")
-
-		return
-	}
-
-	queryParams := extractQueryParams(request)
-	params := map[string]interface{}{
-		"url": queryParams,
-	}
-
-	if err := processBodyAsText(request, commandConfig, params, responseWriter); err != nil {
-		log.Printf("Internal Server Error: %v", err)
-
-		return
-	}
-
-	if err := processBodyAsJSON(request, commandConfig, params, responseWriter); err != nil {
-		log.Printf("Internal Server Error: %v", err)
-
-		return
-	}
-
-	log.Printf("Executing command for: %s %s", request.Method, request.URL.Path)
-
-	ctx := request.Context()
-
-	if commandConfig.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(commandConfig.Timeout)*time.Second)
-		defer cancel()
-	}
-
-	runResult := executor.RunCommand(ctx, commandConfig, params)
-
-	if runResult.ExitCode != 0 {
-		log.Printf("Command execution failed (Exit Code: %d): %s", runResult.ExitCode, runResult.Output)
-		responseWriter.WriteHeader(http.StatusInternalServerError)
-
-		if _, err := fmt.Fprintf(responseWriter, "Command failed with exit code %d\nOutput: %s",
-			runResult.ExitCode, runResult.Output); err != nil {
-			log.Printf("Failed to write response: %v", err)
+// ExecutionHandler creates a new WebHandler that executes the command
+// associated with the URLCommand found in the request context.
+//
+//nolint:ireturn
+func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
+	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+		cmd, err := getURLCommandFromContext(request)
+		if err != nil {
+			return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 		}
 
-		return
-	}
+		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
 
-	log.Printf("Command execution successful")
+		queryParams := extractQueryParams(request)
+		params := map[string]interface{}{
+			"url": queryParams,
+		}
 
-	if _, err := fmt.Fprint(responseWriter, runResult.Output); err != nil {
-		log.Printf("Failed to write response: %v", err)
-	}
+		if err := processBodyAsText(request, &cmd.CommandConfig, params); err != nil {
+			return err
+		}
+
+		if err := processBodyAsJSON(request, &cmd.CommandConfig, params); err != nil {
+			return err
+		}
+
+		cmdResult, err := buildCommand(cmd.CommandConfig.CommandTemplate, params)
+		if err != nil {
+			return err
+		}
+
+		return executeCommand(request.Context(), executor, *cmdResult, responseWriter)
+	})
 }
 
 func extractQueryParams(request *http.Request) map[string]string {
@@ -177,24 +205,10 @@ func extractQueryParams(request *http.Request) map[string]string {
 	return params
 }
 
-func getCommandConfig(responseWriter http.ResponseWriter, request *http.Request) *config.CommandConfig {
-	commandConfig, ok := request.Context().Value(CommandConfigKey).(*config.CommandConfig)
-
-	if !ok || commandConfig == nil {
-		log.Printf("Internal Server Error: command configuration missing in context")
-		responseWriter.WriteHeader(http.StatusInternalServerError)
-
-		return nil
-	}
-
-	return commandConfig
-}
-
 func processBodyAsText(
 	request *http.Request,
 	commandConfig *config.CommandConfig,
 	params map[string]interface{},
-	responseWriter http.ResponseWriter,
 ) error {
 	if !commandConfig.BodyAsText {
 		return nil
@@ -202,13 +216,11 @@ func processBodyAsText(
 
 	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
-		responseWriter.WriteHeader(http.StatusInternalServerError)
-
-		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: failed to read request body"); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-
-		return fmt.Errorf("failed to read request body: %w", err)
+		return httpx.NewWebError(
+			fmt.Errorf("failed to read request body: %w", err),
+			http.StatusInternalServerError,
+			"",
+		)
 	}
 
 	params["bodyAsText"] = string(bodyBytes)
@@ -231,7 +243,6 @@ func processBodyAsJSON(
 	request *http.Request,
 	commandConfig *config.CommandConfig,
 	params map[string]interface{},
-	responseWriter http.ResponseWriter,
 ) error {
 	if !commandConfig.BodyAsJSON {
 		return nil
@@ -239,27 +250,77 @@ func processBodyAsJSON(
 
 	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
-		responseWriter.WriteHeader(http.StatusInternalServerError)
-
-		if _, err := fmt.Fprintf(responseWriter, "Internal Server Error: failed to read request body"); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-
 		return fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	var bodyJSON JSONBody
 	if err := json.Unmarshal(bodyBytes, &bodyJSON); err != nil {
-		responseWriter.WriteHeader(http.StatusBadRequest)
-
-		if _, err := fmt.Fprintf(responseWriter, "Bad Request: failed to parse JSON body"); err != nil {
-			log.Printf("Failed to write response: %v", err)
-		}
-
-		return fmt.Errorf("failed to parse JSON body: %w", err)
+		return httpx.NewWebError(
+			fmt.Errorf("failed to parse JSON body: %w", err),
+			http.StatusBadRequest,
+			"",
+		)
 	}
 
 	params["bodyAsJson"] = bodyJSON
 
 	return nil
+}
+
+func buildCommand(
+	template string,
+	params map[string]interface{},
+) (*cmdbuilder.Result, error) {
+	cmdResult, err := cmdbuilder.BuildCommand(template, params)
+	if err != nil {
+		return nil, fmt.Errorf("error building command: %w", err)
+	}
+
+	return &cmdResult, nil
+}
+
+func executeCommand(
+	ctx context.Context,
+	executor CommandExecutor,
+	cmdResult cmdbuilder.Result,
+	responseWriter http.ResponseWriter,
+) error {
+	command := cmdResult.Command
+	arguments := cmdResult.Arguments
+
+	log.Printf("[INFO] Executing command: %s %v", command, arguments)
+
+	runResult := executor.RunCommand(ctx, command, arguments)
+
+	log.Printf("[INFO] Command execution result: %+v", runResult)
+
+	if runResult.ExitCode != 0 {
+		return httpx.NewWebError(
+			ErrCommandExecutionError,
+			http.StatusInternalServerError,
+			fmt.Sprintf("Command failed with exit code %d\nOutput: %s", runResult.ExitCode, runResult.Output),
+		)
+	}
+
+	log.Printf("[INFO] Command execution successful")
+
+	if _, err := fmt.Fprint(responseWriter, runResult.Output); err != nil {
+		return fmt.Errorf("failed to write response: %w", err)
+	}
+
+	return nil
+}
+
+func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
+	valCmd := request.Context().Value(URLCommandKey)
+	if valCmd == nil {
+		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrInvalidRequestContext)
+	}
+
+	cmd, ok := valCmd.(*config.URLCommand)
+	if !ok {
+		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrInvalidRequestContext)
+	}
+
+	return cmd, nil
 }
