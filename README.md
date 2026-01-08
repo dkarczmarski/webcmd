@@ -167,6 +167,11 @@ Each entry contains:
 * `timeout` *(optional)*
   Timeout in seconds for the command execution
 
+* `outputType` *(optional)*
+  Determines how the command output is returned:
+  - `text`: (default) returns the full output once the command finishes.
+  - `stream`: returns the output in real-time as it is produced by the command.
+
 * `bodyAsText` *(optional)*
   If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `false`.
 
