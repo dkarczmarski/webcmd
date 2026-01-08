@@ -27,8 +27,12 @@ func TestExecutionHandler(t *testing.T) {
 
 		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "echo", []string{"hello"}).
-			Return(handlers.CommandResult{Output: "hello\n", ExitCode: 0})
+			RunCommand(gomock.Any(), "echo", []string{"hello"}, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) handlers.CommandResult {
+				_, _ = w.Write([]byte("hello\n"))
+
+				return handlers.CommandResult{ExitCode: 0}
+			})
 
 		handler := handlers.ExecutionHandler(mockExecutor)
 
@@ -96,8 +100,12 @@ func TestExecutionHandler(t *testing.T) {
 
 		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "exit", []string{"1"}).
-			Return(handlers.CommandResult{Output: "error message", ExitCode: 1})
+			RunCommand(gomock.Any(), "exit", []string{"1"}, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) handlers.CommandResult {
+				_, _ = w.Write([]byte("error message"))
+
+				return handlers.CommandResult{ExitCode: 1}
+			})
 
 		handler := handlers.ExecutionHandler(mockExecutor)
 
@@ -175,8 +183,12 @@ func TestExecutionHandler(t *testing.T) {
 
 			mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 			mockExecutor.EXPECT().
-				RunCommand(gomock.Any(), "echo", tc.expectedArgs).
-				Return(handlers.CommandResult{Output: "ok", ExitCode: 0})
+				RunCommand(gomock.Any(), "echo", tc.expectedArgs, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) handlers.CommandResult {
+					_, _ = w.Write([]byte("ok"))
+
+					return handlers.CommandResult{ExitCode: 0}
+				})
 
 			handler := handlers.ExecutionHandler(mockExecutor)
 

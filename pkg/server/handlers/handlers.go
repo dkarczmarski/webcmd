@@ -4,6 +4,7 @@ package handlers
 //go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -149,12 +150,11 @@ func TimeoutMiddleware() httpx.Middleware {
 // CommandResult defines the outcome of a command execution, including an exit code and output string.
 type CommandResult struct {
 	ExitCode int
-	Output   string
 }
 
 // CommandExecutor is an interface for types that can run system commands.
 type CommandExecutor interface {
-	RunCommand(ctx context.Context, command string, arguments []string) CommandResult
+	RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) CommandResult
 }
 
 // ExecutionHandler creates a new WebHandler that executes the command
@@ -290,7 +290,9 @@ func executeCommand(
 
 	log.Printf("[INFO] Executing command: %s %v", command, arguments)
 
-	runResult := executor.RunCommand(ctx, command, arguments)
+	var outputBuffer bytes.Buffer
+	runResult := executor.RunCommand(ctx, command, arguments, &outputBuffer)
+	output := outputBuffer.String()
 
 	log.Printf("[INFO] Command execution result: %+v", runResult)
 
@@ -298,13 +300,13 @@ func executeCommand(
 		return httpx.NewWebError(
 			ErrCommandExecutionError,
 			http.StatusInternalServerError,
-			fmt.Sprintf("Command failed with exit code %d\nOutput: %s", runResult.ExitCode, runResult.Output),
+			fmt.Sprintf("Command failed with exit code %d\nOutput: %s", runResult.ExitCode, output),
 		)
 	}
 
 	log.Printf("[INFO] Command execution successful")
 
-	if _, err := fmt.Fprint(responseWriter, runResult.Output); err != nil {
+	if _, err := fmt.Fprint(responseWriter, output); err != nil {
 		return fmt.Errorf("failed to write response: %w", err)
 	}
 

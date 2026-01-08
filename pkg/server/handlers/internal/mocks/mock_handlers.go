@@ -11,6 +11,7 @@ package mocks
 
 import (
 	context "context"
+	io "io"
 	reflect "reflect"
 
 	handlers "github.com/dkarczmarski/webcmd/pkg/server/handlers"
@@ -42,17 +43,17 @@ func (m *MockCommandExecutor) EXPECT() *MockCommandExecutorMockRecorder {
 }
 
 // RunCommand mocks base method.
-func (m *MockCommandExecutor) RunCommand(ctx context.Context, command string, arguments []string) handlers.CommandResult {
+func (m *MockCommandExecutor) RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) handlers.CommandResult {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RunCommand", ctx, command, arguments)
+	ret := m.ctrl.Call(m, "RunCommand", ctx, command, arguments, writer)
 	ret0, _ := ret[0].(handlers.CommandResult)
 	return ret0
 }
 
 // RunCommand indicates an expected call of RunCommand.
-func (mr *MockCommandExecutorMockRecorder) RunCommand(ctx, command, arguments any) *MockCommandExecutorRunCommandCall {
+func (mr *MockCommandExecutorMockRecorder) RunCommand(ctx, command, arguments, writer any) *MockCommandExecutorRunCommandCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockCommandExecutor)(nil).RunCommand), ctx, command, arguments)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockCommandExecutor)(nil).RunCommand), ctx, command, arguments, writer)
 	return &MockCommandExecutorRunCommandCall{Call: call}
 }
 
@@ -68,13 +69,13 @@ func (c *MockCommandExecutorRunCommandCall) Return(arg0 handlers.CommandResult) 
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockCommandExecutorRunCommandCall) Do(f func(context.Context, string, []string) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
+func (c *MockCommandExecutorRunCommandCall) Do(f func(context.Context, string, []string, io.Writer) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockCommandExecutorRunCommandCall) DoAndReturn(f func(context.Context, string, []string) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
+func (c *MockCommandExecutorRunCommandCall) DoAndReturn(f func(context.Context, string, []string, io.Writer) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

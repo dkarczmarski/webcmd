@@ -2,9 +2,9 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -34,14 +34,12 @@ func (e *defaultExecutor) RunCommand(
 	ctx context.Context,
 	command string,
 	arguments []string,
+	writer io.Writer,
 ) handlers.CommandResult {
-	var output bytes.Buffer
-
-	exitCode := cmdrunner.RunCommand(ctx, command, arguments, &output)
+	exitCode := cmdrunner.RunCommand(ctx, command, arguments, writer)
 
 	return handlers.CommandResult{
 		ExitCode: exitCode,
-		Output:   output.String(),
 	}
 }
 
