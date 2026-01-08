@@ -14,7 +14,6 @@ import (
 	io "io"
 	reflect "reflect"
 
-	handlers "github.com/dkarczmarski/webcmd/pkg/server/handlers"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,11 +42,12 @@ func (m *MockCommandExecutor) EXPECT() *MockCommandExecutorMockRecorder {
 }
 
 // RunCommand mocks base method.
-func (m *MockCommandExecutor) RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) handlers.CommandResult {
+func (m *MockCommandExecutor) RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RunCommand", ctx, command, arguments, writer)
-	ret0, _ := ret[0].(handlers.CommandResult)
-	return ret0
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // RunCommand indicates an expected call of RunCommand.
@@ -63,19 +63,19 @@ type MockCommandExecutorRunCommandCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockCommandExecutorRunCommandCall) Return(arg0 handlers.CommandResult) *MockCommandExecutorRunCommandCall {
-	c.Call = c.Call.Return(arg0)
+func (c *MockCommandExecutorRunCommandCall) Return(arg0 int, arg1 error) *MockCommandExecutorRunCommandCall {
+	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockCommandExecutorRunCommandCall) Do(f func(context.Context, string, []string, io.Writer) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
+func (c *MockCommandExecutorRunCommandCall) Do(f func(context.Context, string, []string, io.Writer) (int, error)) *MockCommandExecutorRunCommandCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockCommandExecutorRunCommandCall) DoAndReturn(f func(context.Context, string, []string, io.Writer) handlers.CommandResult) *MockCommandExecutorRunCommandCall {
+func (c *MockCommandExecutorRunCommandCall) DoAndReturn(f func(context.Context, string, []string, io.Writer) (int, error)) *MockCommandExecutorRunCommandCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

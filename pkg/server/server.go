@@ -35,12 +35,9 @@ func (e *defaultExecutor) RunCommand(
 	command string,
 	arguments []string,
 	writer io.Writer,
-) handlers.CommandResult {
-	exitCode := cmdrunner.RunCommand(ctx, command, arguments, writer)
-
-	return handlers.CommandResult{
-		ExitCode: exitCode,
-	}
+) (int, error) {
+	//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+	return cmdrunner.RunCommand(ctx, command, arguments, writer)
 }
 
 const (

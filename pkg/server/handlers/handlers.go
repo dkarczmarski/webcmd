@@ -4,7 +4,6 @@ package handlers
 //go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -147,14 +146,9 @@ func TimeoutMiddleware() httpx.Middleware {
 	}
 }
 
-// CommandResult defines the outcome of a command execution, including an exit code and output string.
-type CommandResult struct {
-	ExitCode int
-}
-
 // CommandExecutor is an interface for types that can run system commands.
 type CommandExecutor interface {
-	RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) CommandResult
+	RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error)
 }
 
 // ExecutionHandler creates a new WebHandler that executes the command
@@ -163,12 +157,12 @@ type CommandExecutor interface {
 //nolint:ireturn
 func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
+
 		cmd, err := getURLCommandFromContext(request)
 		if err != nil {
 			return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 		}
-
-		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
 
 		queryParams := extractQueryParams(request)
 		params := map[string]interface{}{
@@ -285,29 +279,19 @@ func executeCommand(
 	cmdResult cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
-	command := cmdResult.Command
-	arguments := cmdResult.Arguments
+	log.Printf("[INFO] Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
 
-	log.Printf("[INFO] Executing command: %s %v", command, arguments)
+	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	var outputBuffer bytes.Buffer
-	runResult := executor.RunCommand(ctx, command, arguments, &outputBuffer)
-	output := outputBuffer.String()
+	exitCode, err := executor.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, responseWriter)
 
-	log.Printf("[INFO] Command execution result: %+v", runResult)
+	if exitCode != 0 {
+		log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, err)
 
-	if runResult.ExitCode != 0 {
-		return httpx.NewWebError(
-			ErrCommandExecutionError,
-			http.StatusInternalServerError,
-			fmt.Sprintf("Command failed with exit code %d\nOutput: %s", runResult.ExitCode, output),
-		)
-	}
-
-	log.Printf("[INFO] Command execution successful")
-
-	if _, err := fmt.Fprint(responseWriter, output); err != nil {
-		return fmt.Errorf("failed to write response: %w", err)
+		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err)
+		if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
+			log.Printf("[ERROR] Failed to write error message: %v", err)
+		}
 	}
 
 	return nil

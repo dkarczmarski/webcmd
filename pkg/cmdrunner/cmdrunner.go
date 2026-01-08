@@ -60,7 +60,7 @@ func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Co
 }
 
 // RunCommand runs a command and returns its result.
-func RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) int {
+func RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error) {
 	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, writer)
 }
 
@@ -71,24 +71,22 @@ func RunCommandWithRunner(
 	command string,
 	arguments []string,
 	writer io.Writer,
-) int {
+) (int, error) {
 	cmd := runner.Command(ctx, command, arguments...)
 
 	cmd.SetStdout(writer)
 	cmd.SetStderr(writer)
 
 	err := cmd.Run()
+	exitCode := determineExitCode(ctx, cmd, err)
 
-	exitCode := determineExitCode(ctx, cmd, err, writer)
-
-	return exitCode
+	//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+	return exitCode, err
 }
 
-func determineExitCode(ctx context.Context, cmd Command, err error, writer io.Writer) int {
+func determineExitCode(ctx context.Context, cmd Command, err error) int {
 	if err != nil {
 		if isTimeoutOrCanceled(ctx) {
-			_, _ = writer.Write([]byte("command timed out or canceled"))
-
 			return -1
 		}
 

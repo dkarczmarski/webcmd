@@ -36,10 +36,14 @@ func TestRunCommandWithRunner(t *testing.T) {
 		mockCommand.EXPECT().ProcessState().Return(nil) // nil means exit code 0 in our logic if err is nil
 
 		var output bytes.Buffer
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
+		exitCode, err := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
+		//
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
 
-		if result != 0 {
-			t.Errorf("expected exit code 0, got %d", result)
+		if exitCode != 0 {
+			t.Errorf("expected exit code 0, got %d", exitCode)
 		}
 
 		if output.String() != "hello output" {
@@ -70,10 +74,14 @@ func TestRunCommandWithRunner(t *testing.T) {
 		mockCommand.EXPECT().Run().Return(errors.New("some error"))
 
 		var output bytes.Buffer
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
+		exitCode, err := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
 
-		if result != -1 {
-			t.Errorf("expected exit code -1 for generic error, got %d", result)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+
+		if exitCode != -1 {
+			t.Errorf("expected exit code -1 for generic error, got %d", exitCode)
 		}
 	})
 }
