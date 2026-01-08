@@ -27,8 +27,12 @@ func TestExecutionHandler(t *testing.T) {
 
 		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "echo", []string{"hello"}).
-			Return(handlers.CommandResult{Output: "hello\n", ExitCode: 0})
+			RunCommand(gomock.Any(), "echo", []string{"hello"}, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
+				_, _ = w.Write([]byte("hello\n"))
+
+				return 0, nil
+			})
 
 		handler := handlers.ExecutionHandler(mockExecutor)
 
@@ -96,8 +100,12 @@ func TestExecutionHandler(t *testing.T) {
 
 		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "exit", []string{"1"}).
-			Return(handlers.CommandResult{Output: "error message", ExitCode: 1})
+			RunCommand(gomock.Any(), "exit", []string{"1"}, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
+				_, _ = w.Write([]byte("error message"))
+
+				return 1, errors.New("exit status 1")
+			})
 
 		handler := handlers.ExecutionHandler(mockExecutor)
 
@@ -115,17 +123,16 @@ func TestExecutionHandler(t *testing.T) {
 		recorder := httptest.NewRecorder()
 
 		err := handler.ServeHTTP(recorder, req)
-		if err == nil {
-			t.Fatal("expected error, got nil")
+		if err != nil {
+			t.Fatalf("expected nil error, got %v", err)
 		}
 
-		var webErr *httpx.WebError
-		if !errors.As(err, &webErr) {
-			t.Fatalf("expected *httpx.WebError, got %T", err)
+		if !strings.Contains(recorder.Body.String(), "Command failed with exit code: 1") {
+			t.Errorf("expected failure message in body, got %q", recorder.Body.String())
 		}
 
-		if !strings.Contains(webErr.Message(), "Command failed with exit code 1") {
-			t.Errorf("expected failure message in error, got %q", webErr.Message())
+		if !strings.Contains(recorder.Body.String(), "exit status 1") {
+			t.Errorf("expected error message in body, got %q", recorder.Body.String())
 		}
 	})
 
@@ -175,8 +182,12 @@ func TestExecutionHandler(t *testing.T) {
 
 			mockExecutor := mocks.NewMockCommandExecutor(ctrl)
 			mockExecutor.EXPECT().
-				RunCommand(gomock.Any(), "echo", tc.expectedArgs).
-				Return(handlers.CommandResult{Output: "ok", ExitCode: 0})
+				RunCommand(gomock.Any(), "echo", tc.expectedArgs, gomock.Any()).
+				DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
+					_, _ = w.Write([]byte("ok"))
+
+					return 0, nil
+				})
 
 			handler := handlers.ExecutionHandler(mockExecutor)
 

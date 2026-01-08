@@ -5,7 +5,6 @@ package cmdrunner
 //go:generate go run go.uber.org/mock/mockgen -typed -source=cmdrunner.go -destination=internal/mocks/mock_cmdrunner.go -package=mocks
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -61,8 +60,8 @@ func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Co
 }
 
 // RunCommand runs a command and returns its result.
-func RunCommand(ctx context.Context, command string, arguments []string) Result {
-	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments)
+func RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error) {
+	return RunCommandWithRunner(ctx, &RealRunner{}, command, arguments, writer)
 }
 
 // RunCommandWithRunner runs a command using the provided runner.
@@ -71,47 +70,38 @@ func RunCommandWithRunner(
 	runner Runner,
 	command string,
 	arguments []string,
-) Result {
+	writer io.Writer,
+) (int, error) {
 	cmd := runner.Command(ctx, command, arguments...)
 
-	var output bytes.Buffer
-
-	cmd.SetStdout(&output)
-	cmd.SetStderr(&output)
+	cmd.SetStdout(writer)
+	cmd.SetStderr(writer)
 
 	err := cmd.Run()
 
-	exitCode := determineExitCode(ctx, cmd, err, &output)
-
-	return Result{
-		ExitCode: exitCode,
-		Output:   output.String(),
-	}
+	return determineExitCodeAndError(ctx, cmd, err)
 }
 
-func determineExitCode(ctx context.Context, cmd Command, err error, output *bytes.Buffer) int {
+func determineExitCodeAndError(ctx context.Context, cmd Command, err error) (int, error) {
 	if err != nil {
 		if isTimeoutOrCanceled(ctx) {
-			if output.Len() == 0 {
-				_, _ = output.WriteString("command timed out or canceled")
-			}
-
-			return -1
+			//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+			return -1, ctx.Err()
 		}
 
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
-			return exitError.ExitCode()
+			return exitError.ExitCode(), err
 		}
 
-		return -1
+		return -1, err
 	}
 
 	if cmd.ProcessState() != nil {
-		return cmd.ProcessState().ExitCode()
+		return cmd.ProcessState().ExitCode(), nil
 	}
 
-	return 0
+	return 0, nil
 }
 
 func isTimeoutOrCanceled(ctx context.Context) bool {

@@ -1,6 +1,7 @@
 package cmdrunner_test
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"testing"
@@ -34,14 +35,19 @@ func TestRunCommandWithRunner(t *testing.T) {
 		mockCommand.EXPECT().Run().Return(nil)
 		mockCommand.EXPECT().ProcessState().Return(nil) // nil means exit code 0 in our logic if err is nil
 
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args)
-
-		if result.ExitCode != 0 {
-			t.Errorf("expected exit code 0, got %d", result.ExitCode)
+		var output bytes.Buffer
+		exitCode, err := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
+		//
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
 		}
 
-		if result.Output != "hello output" {
-			t.Errorf("expected output 'hello output', got %q", result.Output)
+		if exitCode != 0 {
+			t.Errorf("expected exit code 0, got %d", exitCode)
+		}
+
+		if output.String() != "hello output" {
+			t.Errorf("expected output 'hello output', got %q", output.String())
 		}
 	})
 
@@ -67,10 +73,15 @@ func TestRunCommandWithRunner(t *testing.T) {
 		// Or if we want to test ExitCode() extraction, we'd need a real ExitError.
 		mockCommand.EXPECT().Run().Return(errors.New("some error"))
 
-		result := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args)
+		var output bytes.Buffer
+		exitCode, err := cmdrunner.RunCommandWithRunner(ctx, mockRunner, cmdName, args, &output)
 
-		if result.ExitCode != -1 {
-			t.Errorf("expected exit code -1 for generic error, got %d", result.ExitCode)
+		if err == nil {
+			t.Error("expected error, got nil")
+		}
+
+		if exitCode != -1 {
+			t.Errorf("expected exit code -1 for generic error, got %d", exitCode)
 		}
 	})
 }

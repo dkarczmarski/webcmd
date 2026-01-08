@@ -22,7 +22,7 @@ import (
 var (
 	ErrUnauthorized          = errors.New("unauthorized")
 	ErrInvalidRequestContext = errors.New("invalid request context")
-	ErrCommandExecutionError = errors.New("command execution error")
+	ErrBadConfiguration      = errors.New("bad configuration")
 )
 
 type contextKey string
@@ -146,15 +146,9 @@ func TimeoutMiddleware() httpx.Middleware {
 	}
 }
 
-// CommandResult defines the outcome of a command execution, including an exit code and output string.
-type CommandResult struct {
-	ExitCode int
-	Output   string
-}
-
 // CommandExecutor is an interface for types that can run system commands.
 type CommandExecutor interface {
-	RunCommand(ctx context.Context, command string, arguments []string) CommandResult
+	RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error)
 }
 
 // ExecutionHandler creates a new WebHandler that executes the command
@@ -163,12 +157,12 @@ type CommandExecutor interface {
 //nolint:ireturn
 func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
+
 		cmd, err := getURLCommandFromContext(request)
 		if err != nil {
 			return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 		}
-
-		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
 
 		queryParams := extractQueryParams(request)
 		params := map[string]interface{}{
@@ -188,7 +182,29 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 			return err
 		}
 
-		return executeCommand(request.Context(), executor, *cmdResult, responseWriter)
+		var writer http.ResponseWriter
+
+		switch cmd.CommandConfig.OutputType {
+		case "stream":
+			if _, ok := responseWriter.(http.Flusher); !ok {
+				return fmt.Errorf("streaming not supported: %w", ErrBadConfiguration)
+			}
+
+			writer = newFlushResponseWriter(responseWriter)
+
+			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			responseWriter.Header().Set("Cache-Control", "no-cache")
+			// nginx:
+			responseWriter.Header().Set("X-Accel-Buffering", "no")
+		case "", "text":
+			writer = responseWriter
+
+			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		default:
+			return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, cmd.CommandConfig.OutputType)
+		}
+
+		return executeCommand(request.Context(), executor, *cmdResult, writer)
 	})
 }
 
@@ -285,27 +301,17 @@ func executeCommand(
 	cmdResult cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
-	command := cmdResult.Command
-	arguments := cmdResult.Arguments
+	log.Printf("[INFO] Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
 
-	log.Printf("[INFO] Executing command: %s %v", command, arguments)
+	exitCode, err := executor.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, responseWriter)
 
-	runResult := executor.RunCommand(ctx, command, arguments)
+	if exitCode != 0 {
+		log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, err)
 
-	log.Printf("[INFO] Command execution result: %+v", runResult)
-
-	if runResult.ExitCode != 0 {
-		return httpx.NewWebError(
-			ErrCommandExecutionError,
-			http.StatusInternalServerError,
-			fmt.Sprintf("Command failed with exit code %d\nOutput: %s", runResult.ExitCode, runResult.Output),
-		)
-	}
-
-	log.Printf("[INFO] Command execution successful")
-
-	if _, err := fmt.Fprint(responseWriter, runResult.Output); err != nil {
-		return fmt.Errorf("failed to write response: %w", err)
+		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err)
+		if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
+			log.Printf("[ERROR] Failed to write error message: %v", err)
+		}
 	}
 
 	return nil

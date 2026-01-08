@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -33,20 +34,17 @@ func (e *defaultExecutor) RunCommand(
 	ctx context.Context,
 	command string,
 	arguments []string,
-) handlers.CommandResult {
-	result := cmdrunner.RunCommand(ctx, command, arguments)
-
-	return handlers.CommandResult{
-		ExitCode: result.ExitCode,
-		Output:   result.Output,
-	}
+	writer io.Writer,
+) (int, error) {
+	//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+	return cmdrunner.RunCommand(ctx, command, arguments, writer)
 }
 
 const (
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
-	writeTimeout      = 10 * time.Second
-	idleTimeout       = 120 * time.Second
+	writeTimeout      = 0 // No timeout for streaming
+	idleTimeout       = 0 // No timeout for streaming
 )
 
 // WithAddr returns an option function that sets the server address.

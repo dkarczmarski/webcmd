@@ -55,6 +55,7 @@ func TestLoadConfig(t *testing.T) {
 						BodyAsText:      true,
 						BodyAsJSON:      true,
 						Timeout:         5,
+						OutputType:      "text",
 					},
 				},
 				{
