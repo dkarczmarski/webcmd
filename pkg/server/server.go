@@ -117,3 +117,12 @@ func (s *Server) Start() error {
 
 	return nil
 }
+
+// Shutdown gracefully shuts down the server without interrupting any active connections.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		return fmt.Errorf("server shutdown: %w", err)
+	}
+
+	return nil
+}
