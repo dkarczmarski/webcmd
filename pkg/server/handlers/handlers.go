@@ -22,7 +22,7 @@ import (
 var (
 	ErrUnauthorized          = errors.New("unauthorized")
 	ErrInvalidRequestContext = errors.New("invalid request context")
-	ErrCommandExecutionError = errors.New("command execution error")
+	ErrBadConfiguration      = errors.New("bad configuration")
 )
 
 type contextKey string
@@ -182,7 +182,29 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 			return err
 		}
 
-		return executeCommand(request.Context(), executor, *cmdResult, responseWriter)
+		var writer http.ResponseWriter
+
+		switch cmd.CommandConfig.OutputType {
+		case "stream":
+			if _, ok := responseWriter.(http.Flusher); !ok {
+				return fmt.Errorf("streaming not supported: %w", ErrBadConfiguration)
+			}
+
+			writer = newFlushResponseWriter(responseWriter)
+
+			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			responseWriter.Header().Set("Cache-Control", "no-cache")
+			// nginx:
+			responseWriter.Header().Set("X-Accel-Buffering", "no")
+		case "", "text":
+			writer = responseWriter
+
+			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		default:
+			return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, cmd.CommandConfig.OutputType)
+		}
+
+		return executeCommand(request.Context(), executor, *cmdResult, writer)
 	})
 }
 
@@ -280,8 +302,6 @@ func executeCommand(
 	responseWriter http.ResponseWriter,
 ) error {
 	log.Printf("[INFO] Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
-
-	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	exitCode, err := executor.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, responseWriter)
 

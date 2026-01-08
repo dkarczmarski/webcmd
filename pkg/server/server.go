@@ -43,8 +43,8 @@ func (e *defaultExecutor) RunCommand(
 const (
 	readHeaderTimeout = 5 * time.Second
 	readTimeout       = 10 * time.Second
-	writeTimeout      = 10 * time.Second
-	idleTimeout       = 120 * time.Second
+	writeTimeout      = 0 // No timeout for streaming
+	idleTimeout       = 0 // No timeout for streaming
 )
 
 // WithAddr returns an option function that sets the server address.

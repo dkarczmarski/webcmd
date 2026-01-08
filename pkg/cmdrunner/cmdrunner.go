@@ -78,31 +78,30 @@ func RunCommandWithRunner(
 	cmd.SetStderr(writer)
 
 	err := cmd.Run()
-	exitCode := determineExitCode(ctx, cmd, err)
 
-	//nolint:wrapcheck // error is intentionally forwarded as-is to the client
-	return exitCode, err
+	return determineExitCodeAndError(ctx, cmd, err)
 }
 
-func determineExitCode(ctx context.Context, cmd Command, err error) int {
+func determineExitCodeAndError(ctx context.Context, cmd Command, err error) (int, error) {
 	if err != nil {
 		if isTimeoutOrCanceled(ctx) {
-			return -1
+			//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+			return -1, ctx.Err()
 		}
 
 		var exitError *exec.ExitError
 		if errors.As(err, &exitError) {
-			return exitError.ExitCode()
+			return exitError.ExitCode(), err
 		}
 
-		return -1
+		return -1, err
 	}
 
 	if cmd.ProcessState() != nil {
-		return cmd.ProcessState().ExitCode()
+		return cmd.ProcessState().ExitCode(), nil
 	}
 
-	return 0
+	return 0, nil
 }
 
 func isTimeoutOrCanceled(ctx context.Context) bool {

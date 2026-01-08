@@ -15,3 +15,17 @@ urlCommands:
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
     timeout: 30
+  - url: GET /stream/time
+    commandTemplate: |
+      bash
+      -c
+      for i in {1..10}; do echo $i; date '+%H:%M:%S'; sleep 1; done
+    outputType: stream
+    timeout: 30
+  - url: GET /stream/time-with-timeout-5
+    commandTemplate: |
+      bash
+      -c
+      for i in {1..10}; do echo $i; date '+%H:%M:%S'; sleep 1; done
+    outputType: stream
+    timeout: 5
