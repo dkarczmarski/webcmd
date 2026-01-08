@@ -2,7 +2,7 @@
 // timeout handling, and combined output (stdout and stderr).
 package cmdrunner
 
-//go:generate mockgen -typed -source=cmdrunner.go -destination=internal/mocks/mock_cmdrunner.go -package=mocks
+//go:generate go run go.uber.org/mock/mockgen -typed -source=cmdrunner.go -destination=internal/mocks/mock_cmdrunner.go -package=mocks
 
 import (
 	"bytes"
