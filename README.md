@@ -21,24 +21,61 @@ In many scenarios (CI/CD pipelines, automation, maintenance):
 
 ## Build and run
 
-```
+#### Fetch and build
+
+```shell
 git clone https://github.com/dkarczmarski/webcmd.git
 cd webcmd
 go build -o webcmd ./cmd
+```
 
+#### Run and test sample commands
+
+Run sample configuration:
+
+```shell
 cp config.sample.yaml config.yaml
 ./webcmd -config config.yaml
 ```
 
+Run a sample command:
+
+```shell
+curl -H "X-Api-Key: MYSECRETKEY" -X POST http://localhost:8080/cmd/echo?message=hello
+```
+
+```output
+hello
+```
+
+Run a sample command:
+
+```shell
+curl -H "X-Api-Key: MYSECRETKEY" http://localhost:8080/stream/time
+```
+
+```output
+1 11:47:28
+2 11:47:29
+3 11:47:30
+4 11:47:31
+5 11:47:32
+6 11:47:33
+7 11:47:34
+8 11:47:36
+9 11:47:37
+10 11:47:38
+```
+
 ## Quick Start
 
-### Basic steps
+#### Basic steps
 
 1. Define the command you want to run (optionally using request parameters)
 2. Assign it to an HTTP endpoint
 3. (Optional) Protect the endpoint with an API key
 
-### Example 1 - Public endpoint (no authorization)
+#### Example 1 - Public endpoint (no authorization)
 
 We want to create an endpoint that returns the current disk usage using the `df -h` command.
 
@@ -58,20 +95,20 @@ urlCommands:
 
 Call the endpoint:
 
-```sh
-curl localhost:8080/maintenance/diskspace
+```shell
+curl http://localhost:8080/maintenance/diskspace
 ```
 
 #### Example 2 - Protected endpoint with API key and parameters
 
 We want to run:
 
-```sh
+```shell
 /usr/local/bin/myapp restart --reason MY_REASON
 ```
 
 * Endpoint: `POST /myapp/restart`
-* Required API key: `MYKEY123`
+* Required API key: `MYSECRETKEY`
 * Parameter: `reason` (taken from query parameters)
 * Command: `/usr/local/bin/myapp restart --reason {{.url.reason}}`
 
@@ -80,7 +117,7 @@ Define `config.yaml`:
 ```yaml
 authorization:
   - name: my-auth-1
-    key: MYKEY123
+    key: MYSECRETKEY
 urlCommands:
   - url: POST /myapp/restart
     authorizationName: my-auth-1
@@ -93,11 +130,52 @@ urlCommands:
 
 Call the endpoint:
 
-```sh
-curl -H "X-Api-Key: MYKEY123" \
+```shell
+curl -H "X-Api-Key: MYSECRETKEY" \
      -X POST \
-     "localhost:8080/myapp/restart?reason=MY_REASON"
+     "http://localhost:8080/myapp/restart?reason=MY_REASON"
 ```
+
+#### Example 3 - Streaming output
+
+We want to watch the output of the following command online:
+
+```shell
+docker logs -f my-container
+```
+
+* Endpoint: `GET /docker/logs/my-container`
+* Required API key: `MYSECRETKEY`
+* Command: `docker logs -f my-container`
+* Output type: `stream`
+* Timeout: `0` (no timeout)
+
+Define `config.yaml`:
+
+```yaml
+authorization:
+  - name: my-auth-1
+    key: MYSECRETKEY
+urlCommands:
+  - url: GET /docker/logs/my-container
+    commandTemplate: |
+      docker
+      logs
+      -f
+      my-container
+    outputType: stream
+    timeout: 0
+```
+
+Call the endpoint:
+
+```shell
+curl -H "X-Api-Key: MYSECRETKEY" \
+     -X POST \
+     "http://localhost:8080/docker/logs/my-container"
+```
+
+When you close the connection, the command is stopped.
 
 ## Configuration (`config.yaml`)
 
@@ -139,7 +217,7 @@ Example:
 ```yaml
 authorization:
   - name: admin-auth
-    key: SUPERSECRETKEY
+    key: MYSECRETKEY
 ```
 
 ### `urlCommands`
@@ -165,7 +243,7 @@ Each entry contains:
   Request data (e.g. query parameters) can be used as placeholders.
 
 * `timeout` *(optional)*
-  Timeout in seconds for the command execution
+  Timeout in seconds for the command execution. `0` means no timeout. 
 
 * `outputType` *(optional)*
   Determines how the command output is returned:
@@ -196,7 +274,7 @@ urlCommands:
 
 Call the endpoint:
 
-```sh
+```shell
 curl -X POST http://localhost:8080/echo-text \
      -d "Hello from request body"
 ```
@@ -217,7 +295,7 @@ urlCommands:
 
 Call the endpoint:
 
-```sh
+```shell
 curl -X POST http://localhost:8080/deploy \
      -H "Content-Type: application/json" \
      -d '{"project_name": "my-app", "version": "1.0.1"}'
