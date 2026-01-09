@@ -1,5 +1,5 @@
-server:
-  address: "localhost:8080"
+#server:
+#  address: "127.0.0.1:8080"
 authorization:
   - name: auth-name1
     key: MYSECRETKEY
@@ -15,6 +15,20 @@ urlCommands:
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
     timeout: 30
+  - url: POST /cmd/echo-text
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsText}}
+    timeout: 5
+  - url: POST /cmd/echo-json
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsJson.message}}
+    params:
+      bodyAsJson: true
+    timeout: 5
   - url: GET /stream/time
     commandTemplate: |
       bash
