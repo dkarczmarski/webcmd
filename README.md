@@ -16,14 +16,14 @@ Instead of exposing broad system permissions, **webcmd** lets you define a safe,
 
 In many scenarios (CI/CD pipelines, automation, maintenance):
 
-- You need to run **one specific command** on a remote host
-- Giving SSH access is **too powerful and risky**
-- You want a **simple HTTP interface** instead
+- You need to run **one specific command** on a remote host.
+- Giving SSH access is **too powerful and risky**.
+- You want a **simple HTTP interface** instead.
 
 **webcmd** solves this by:
-- Exposing commands via HTTP endpoints
-- Allowing optional API key authorization per endpoint
-- Supporting command parameters from the request
+- Exposing commands via HTTP endpoints.
+- Allowing optional API key authorization per endpoint.
+- Supporting command parameters from the request.
 
 ## Build and run
 
@@ -77,17 +77,17 @@ curl -H "X-Api-Key: MYSECRETKEY" http://localhost:8080/stream/time
 
 #### Basic steps
 
-1. Define the command you want to run (optionally using request parameters)
-2. Assign it to an HTTP endpoint
-3. (Optional) Protect the endpoint with an API key
+1. Define the command you want to run. You can create a command template that uses parameters taken from URL query parameters or from the request body. In the command definition, each argument must be placed on a separate line.
+2. Assign it to an HTTP endpoint.
+3. (Optional) Protect the endpoint with an API key.
 
 #### Example 1 - Public endpoint (no authorization)
 
 We want to create an endpoint that returns the current disk usage using the `df -h` command.
 
-- Endpoint: `GET /maintenance/diskspace`
-- Authorization: **none**
-- Command: `df -h`
+- Endpoint: `GET /maintenance/diskspace`.
+- Authorization: **none**.
+- Command: `df -h`.
 
 Define `config.yaml`:
 
@@ -113,10 +113,10 @@ We want to run:
 /usr/local/bin/myapp restart --reason MY_REASON
 ```
 
-* Endpoint: `POST /myapp/restart`
-* Required API key: `MYSECRETKEY`
-* Parameter: `reason` (taken from query parameters)
-* Command: `/usr/local/bin/myapp restart --reason {{.url.reason}}`
+* Endpoint: `POST /myapp/restart`.
+* Required API key: `MYSECRETKEY`.
+* Parameter: `reason` (taken from query parameters).
+* Command: `/usr/local/bin/myapp restart --reason {{.url.reason}}`.
 
 Define `config.yaml`:
 
@@ -150,11 +150,11 @@ We want to watch the output of the following command online:
 docker logs -f my-container
 ```
 
-* Endpoint: `GET /docker/logs/my-container`
-* Required API key: `MYSECRETKEY`
-* Command: `docker logs -f my-container`
-* Output type: `stream`
-* Timeout: `0` (no timeout)
+* Endpoint: `GET /docker/logs/my-container`.
+* Required API key: `MYSECRETKEY`.
+* Command: `docker logs -f my-container`.
+* Output type: `stream`.
+* Timeout: `0` (no timeout).
 
 Define `config.yaml`:
 
@@ -195,8 +195,8 @@ When you close the connection, the command is stopped.
 
 * `https` *(optional)* - HTTPS configuration:
     * `enabled` - enable or disable HTTPS. Default: `false`.
-    * `certFile` - path to the SSL certificate file
-    * `keyFile` - path to the SSL key file
+    * `certFile` - path to the SSL certificate file.
+    * `keyFile` - path to the SSL key file.
 
 Example:
 
@@ -211,12 +211,12 @@ server:
 
 ### `authorization`
 
-List of API key authorizations. 
+List of API key authorizations.
 
 Each authorization entry contains:
 
-* `name` - identifier referenced by `urlCommands.authorizationName`
-* `key` - API key value, must be provided in the `X-Api-Key` HTTP header
+* `name` - identifier referenced by `urlCommands.authorizationName`.
+* `key` - API key value, must be provided in the `X-Api-Key` HTTP header.
 
 Example:
 
@@ -228,28 +228,28 @@ authorization:
 
 ### `urlCommands`
 
-Defines HTTP endpoints and the commands they execute. 
+Defines HTTP endpoints and the commands they execute.
 
 Each entry contains:
 
 * `url`
-  HTTP method and path, e.g. `GET /health` or `POST /deploy`
+  HTTP method and path, e.g. `GET /health` or `POST /deploy`.
 
 * `authorizationName` *(optional)*
-  Name of authorization defined in `authorization`
+  Name of authorization defined in `authorization`.
 
 * `commandTemplate`
   Command template:
 
-    * First line: executable
-    * Each following line: one argument
-    * Empty lines are ignored
-    * Supports Go `text/template` syntax [https://golang.org/pkg/text/template/](https://golang.org/pkg/text/template/)
+    * First line: executable.
+    * Each following line: one argument.
+    * Empty lines are ignored.
+    * Supports Go `text/template` syntax [https://golang.org/pkg/text/template/](https://golang.org/pkg/text/template/).
 
   Request data (e.g. query parameters) can be used as placeholders.
 
 * `timeout` *(optional)*
-  Timeout in seconds for the command execution. `0` means no timeout. 
+  Timeout in seconds for the command execution. `0` means no timeout.
 
 * `outputType` *(optional)*
   Determines how the command output is returned:
@@ -260,7 +260,7 @@ Each entry contains:
   If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `false`.
 
 * `bodyAsJson` *(optional)*
-  If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`. 
+  If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`.
   - Allows access to individual fields, e.g., `{{.bodyAsJson.field_name}}`.
   - Using `{{.bodyAsJson}}` without a field will insert the full, valid JSON string.
   - Requires a valid `Content-Type: application/json` header.
@@ -311,7 +311,9 @@ In the above example:
 - `{{.bodyAsJson.project_name}}` will be replaced by `my-app`.
 - `{{.bodyAsJson}}` will be replaced by the full JSON string: `{"project_name":"my-app","version":"1.0.1"}`.
 
-Example 3:
+Example 3 - using URL query parameters:
+
+You can use any URL query parameters in the command template by prefixing the key name with `url.`.
 
 ```yaml
 urlCommands:
