@@ -1,5 +1,11 @@
 # webcmd
 
+[![Build & Test (Go)](https://github.com/dkarczmarski/webcmd/actions/workflows/build.yml/badge.svg)](https://github.com/dkarczmarski/webcmd/actions/workflows/build.yml)
+
+> [!WARNING]
+> **Status: Pre-1.0 (v0.x.x)**
+> The public API is not stable yet and may change between releases.
+
 **webcmd** is a lightweight tool that allows you to execute predefined commands on a host machine via HTTP endpoints.
 
 It is designed for small projects, CI/CD tasks, and maintenance jobs where you need to trigger a process or command on a remote machine - without giving full SSH access.
