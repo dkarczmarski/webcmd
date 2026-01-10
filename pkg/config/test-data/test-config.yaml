@@ -16,8 +16,8 @@ urlCommands:
       /bin/echo
       {{.param1}}
       {{.param2}}
-    bodyAsText: true
-    bodyAsJson: true
+    params:
+      bodyAsJson: true
     timeout: 5
     outputType: text
   - url: POST /cmd/sleep

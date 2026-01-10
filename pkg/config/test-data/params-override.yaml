@@ -1,0 +1,6 @@
+urlCommands:
+  - url: /test
+    commandTemplate: echo hello
+    params:
+      bodyAsText: false
+      bodyAsJson: true

@@ -12,8 +12,24 @@ X-Api-Key: MYSECRETKEY
 ### Test date command
 GET http://localhost:8080/cmd/date
 
+### Test echo text
+POST http://localhost:8080/cmd/echo-text
+Content-Type: text/plain
+
+Hello world!
+
+### Test echo json
+POST http://localhost:8080/cmd/echo-json
+Content-Type: application/json
+
+{
+  "message": "hello from json"
+}
+
 ### Test stream time
 GET http://localhost:8080/stream/time
 
 ### Test stream time with timeout 5 seconds
 GET http://localhost:8080/stream/time-with-timeout-5
+
+

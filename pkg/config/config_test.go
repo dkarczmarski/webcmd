@@ -18,10 +18,7 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("success loading config", func(t *testing.T) {
 		t.Parallel()
 
-		configuration, err := config.LoadConfigFromFile(configPath)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
+		configuration := mustLoadConfig(t, configPath)
 
 		if configuration == nil {
 			t.Fatal("expected config to be not nil")
@@ -52,10 +49,12 @@ func TestLoadConfig(t *testing.T) {
 					AuthorizationName: "auth-name1,auth-name2",
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
-						BodyAsText:      true,
-						BodyAsJSON:      true,
-						Timeout:         5,
-						OutputType:      "text",
+						Params: config.ParamsConfig{
+							BodyAsText: ptrBool(true),
+							BodyAsJSON: ptrBool(true),
+						},
+						Timeout:    5,
+						OutputType: "text",
 					},
 				},
 				{
@@ -63,7 +62,11 @@ func TestLoadConfig(t *testing.T) {
 					AuthorizationName: "",
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/usr/bin/sleep\n20\n",
-						Timeout:         30,
+						Params: config.ParamsConfig{
+							BodyAsText: ptrBool(true),
+							BodyAsJSON: ptrBool(false),
+						},
+						Timeout: 30,
 					},
 				},
 			},
@@ -84,7 +87,7 @@ func TestLoadConfig(t *testing.T) {
 	})
 }
 
-//go:embed test-data/test-config.yaml
+//go:embed test-data/*.yaml
 var testFiles embed.FS
 
 func setupTestFile(t *testing.T, fileName string) string {
@@ -107,4 +110,126 @@ func setupTestFile(t *testing.T, fileName string) string {
 	}
 
 	return configPath
+}
+
+func ptrBool(b bool) *bool {
+	return &b
+}
+
+func TestSetDefaults(t *testing.T) {
+	t.Parallel()
+
+	t.Run("HTTPS disabled default address", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "https-disabled.yaml")
+
+		cfg := mustLoadConfig(t, configPath)
+
+		config.SetDefaults(cfg)
+
+		expected := "127.0.0.1:8080"
+
+		if cfg.Server.Address != expected {
+			t.Errorf("expected address %s, got %s", expected, cfg.Server.Address)
+		}
+	})
+
+	t.Run("HTTPS enabled default address", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "https-enabled.yaml")
+
+		cfg := mustLoadConfig(t, configPath)
+
+		config.SetDefaults(cfg)
+
+		expected := "127.0.0.1:8443"
+
+		if cfg.Server.Address != expected {
+			t.Errorf("expected address %s, got %s", expected, cfg.Server.Address)
+		}
+	})
+
+	t.Run("Existing address not overwritten", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "custom-address.yaml")
+
+		cfg := mustLoadConfig(t, configPath)
+
+		config.SetDefaults(cfg)
+
+		expected := "0.0.0.0:9000"
+
+		if cfg.Server.Address != expected {
+			t.Errorf("expected address %s, got %s", expected, cfg.Server.Address)
+		}
+	})
+
+	t.Run("Params default values", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "params-default.yaml")
+		cfg := mustLoadConfig(t, configPath)
+
+		if len(cfg.URLCommands) != 1 {
+			t.Fatal("expected 1 URL command")
+		}
+
+		params := cfg.URLCommands[0].Params
+
+		if !config.IsTrue(params.BodyAsText) {
+			t.Errorf("expected BodyAsText to be true by default, got %v", params.BodyAsText)
+		}
+
+		if config.IsTrue(params.BodyAsJSON) {
+			t.Errorf("expected BodyAsJSON to be false by default, got %v", params.BodyAsJSON)
+		}
+	})
+
+	t.Run("Params override values", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "params-override.yaml")
+		cfg := mustLoadConfig(t, configPath)
+
+		params := cfg.URLCommands[0].Params
+
+		if config.IsTrue(params.BodyAsText) {
+			t.Errorf("expected BodyAsText to be false, got %v", params.BodyAsText)
+		}
+
+		if !config.IsTrue(params.BodyAsJSON) {
+			t.Errorf("expected BodyAsJSON to be true, got %v", params.BodyAsJSON)
+		}
+	})
+
+	t.Run("Params mixed values", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "params-mixed.yaml")
+		cfg := mustLoadConfig(t, configPath)
+
+		params := cfg.URLCommands[0].Params
+
+		if !config.IsTrue(params.BodyAsText) {
+			t.Errorf("expected BodyAsText to be true (default), got %v", params.BodyAsText)
+		}
+
+		if !config.IsTrue(params.BodyAsJSON) {
+			t.Errorf("expected BodyAsJSON to be true (overridden), got %v", params.BodyAsJSON)
+		}
+	})
+}
+
+func mustLoadConfig(t *testing.T, configPath string) *config.Config {
+	t.Helper()
+
+	configuration, err := config.LoadConfigFromFile(configPath)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	return configuration
 }

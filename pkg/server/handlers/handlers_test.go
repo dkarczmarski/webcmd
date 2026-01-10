@@ -195,8 +195,10 @@ func TestExecutionHandler(t *testing.T) {
 				URL: tc.url,
 				CommandConfig: config.CommandConfig{
 					CommandTemplate: tc.commandTemplate,
-					BodyAsText:      tc.bodyAsText,
-					BodyAsJSON:      tc.bodyAsJSON,
+					Params: config.ParamsConfig{
+						BodyAsText: ptrBool(tc.bodyAsText),
+						BodyAsJSON: ptrBool(tc.bodyAsJSON),
+					},
 				},
 			}
 
@@ -221,4 +223,8 @@ func TestExecutionHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+func ptrBool(b bool) *bool {
+	return &b
 }

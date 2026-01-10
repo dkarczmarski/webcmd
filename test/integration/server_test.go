@@ -19,15 +19,20 @@ var testConfigYaml string
 func TestServerIntegration(t *testing.T) {
 	t.Parallel()
 
-	configuration, err := config.LoadConfigFromString(testConfigYaml)
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
+	setupServer := func(t *testing.T) *server.Server {
+		t.Helper()
 
-	srv := server.New(configuration)
+		configuration, err := config.LoadConfigFromString(testConfigYaml)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		return server.New(configuration)
+	}
 
 	t.Run("POST /cmd/echo", func(t *testing.T) {
 		t.Parallel()
+		srv := setupServer(t)
 
 		req := httptest.NewRequest(http.MethodPost, "/cmd/echo?param1=hello", nil)
 
@@ -49,6 +54,7 @@ func TestServerIntegration(t *testing.T) {
 
 	t.Run("GET /cmd/date", func(t *testing.T) {
 		t.Parallel()
+		srv := setupServer(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/cmd/date", nil)
 		rec := httptest.NewRecorder()
@@ -67,6 +73,7 @@ func TestServerIntegration(t *testing.T) {
 
 	t.Run("POST /cmd/echo-text", func(t *testing.T) {
 		t.Parallel()
+		srv := setupServer(t)
 
 		body := "hello from body"
 		req := httptest.NewRequest(http.MethodPost, "/cmd/echo-text", strings.NewReader(body))
@@ -86,6 +93,7 @@ func TestServerIntegration(t *testing.T) {
 
 	t.Run("POST /cmd/echo-json", func(t *testing.T) {
 		t.Parallel()
+		srv := setupServer(t)
 
 		body := `{"baz":123,"foo":"bar"}`
 		req := httptest.NewRequest(http.MethodPost, "/cmd/echo-json", strings.NewReader(body))
@@ -107,6 +115,7 @@ func TestServerIntegration(t *testing.T) {
 
 	t.Run("404 Not Found", func(t *testing.T) {
 		t.Parallel()
+		srv := setupServer(t)
 
 		req := httptest.NewRequest(http.MethodGet, "/cmd/non-existent", nil)
 

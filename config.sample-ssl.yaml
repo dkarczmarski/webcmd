@@ -1,5 +1,5 @@
 server:
-  address: ":8443"
+#  address: "127.0.0.1:8443"
   https:
     enabled: true
     certFile: ./cert.pem
@@ -19,6 +19,20 @@ urlCommands:
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
     timeout: 30
+  - url: POST /cmd/echo-text
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsText}}
+    timeout: 5
+  - url: POST /cmd/echo-json
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.bodyAsJson.message}}
+    params:
+      bodyAsJson: true
+    timeout: 5
   - url: GET /stream/time
     commandTemplate: |
       bash

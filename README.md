@@ -256,22 +256,24 @@ Each entry contains:
   - `text`: (default) returns the full output once the command finishes.
   - `stream`: returns the output in real-time as it is produced by the command.
 
-* `bodyAsText` *(optional)*
-  If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `false`.
+* `params` *(optional)*
+  Optional configuration for request body processing:
 
-* `bodyAsJson` *(optional)*
-  If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`.
-  - Allows access to individual fields, e.g., `{{.bodyAsJson.field_name}}`.
-  - Using `{{.bodyAsJson}}` without a field will insert the full, valid JSON string.
-  - Requires a valid `Content-Type: application/json` header.
-  - Default: `false`.
+    * `bodyAsText` *(optional)*
+      If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `true`.
+
+    * `bodyAsJson` *(optional)*
+      If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`.
+      - Allows access to individual fields, e.g., `{{.bodyAsJson.field_name}}`.
+      - Using `{{.bodyAsJson}}` without a field will insert the full, valid JSON string.
+      - Requires a valid `Content-Type: application/json` header.
+      - Default: `false`.
 
 Example 1 - Using `bodyAsText`:
 
 ```yaml
 urlCommands:
   - url: POST /echo-text
-    bodyAsText: true
     commandTemplate: |
       /bin/echo
       -n
@@ -290,7 +292,8 @@ Example 2 - Using `bodyAsJson`:
 ```yaml
 urlCommands:
   - url: POST /deploy
-    bodyAsJson: true
+    params:
+      bodyAsJson: true
     commandTemplate: |
       /usr/local/bin/deploy.sh
       --project

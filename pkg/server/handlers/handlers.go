@@ -4,6 +4,7 @@ package handlers
 //go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -169,9 +170,16 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 			"url": queryParams,
 		}
 
+		bodyBytes, err := bufferRequestBody(request)
+		if err != nil {
+			return err
+		}
+
 		if err := processBodyAsText(request, &cmd.CommandConfig, params); err != nil {
 			return err
 		}
+
+		resetRequestBody(request, bodyBytes)
 
 		if err := processBodyAsJSON(request, &cmd.CommandConfig, params); err != nil {
 			return err
@@ -208,6 +216,31 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 	})
 }
 
+func resetRequestBody(request *http.Request, bodyBytes []byte) {
+	if request.Body != nil {
+		request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+}
+
+func bufferRequestBody(request *http.Request) ([]byte, error) {
+	if request.Body == nil {
+		return nil, nil
+	}
+
+	bodyBytes, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, httpx.NewWebError(
+			fmt.Errorf("failed to read request body: %w", err),
+			http.StatusInternalServerError,
+			"",
+		)
+	}
+
+	resetRequestBody(request, bodyBytes)
+
+	return bodyBytes, nil
+}
+
 func extractQueryParams(request *http.Request) map[string]string {
 	params := make(map[string]string)
 	query := request.URL.Query()
@@ -226,7 +259,7 @@ func processBodyAsText(
 	commandConfig *config.CommandConfig,
 	params map[string]interface{},
 ) error {
-	if !commandConfig.BodyAsText {
+	if !config.IsTrue(commandConfig.Params.BodyAsText) {
 		return nil
 	}
 
@@ -260,7 +293,7 @@ func processBodyAsJSON(
 	commandConfig *config.CommandConfig,
 	params map[string]interface{},
 ) error {
-	if !commandConfig.BodyAsJSON {
+	if !config.IsTrue(commandConfig.Params.BodyAsJSON) {
 		return nil
 	}
 

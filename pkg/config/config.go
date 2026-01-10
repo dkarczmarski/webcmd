@@ -36,13 +36,18 @@ type AuthorizationConfig struct {
 	Key  string `yaml:"key"`
 }
 
+// ParamsConfig contains optional configuration for request body processing.
+type ParamsConfig struct {
+	BodyAsText *bool `yaml:"bodyAsText"`
+	BodyAsJSON *bool `yaml:"bodyAsJson"`
+}
+
 // CommandConfig contains the configuration for a specific command execution.
 type CommandConfig struct {
-	CommandTemplate string `yaml:"commandTemplate"`
-	BodyAsText      bool   `yaml:"bodyAsText"`
-	BodyAsJSON      bool   `yaml:"bodyAsJson"`
-	Timeout         int    `yaml:"timeout"`
-	OutputType      string `yaml:"outputType"`
+	CommandTemplate string       `yaml:"commandTemplate"`
+	Params          ParamsConfig `yaml:"params"`
+	Timeout         int          `yaml:"timeout"`
+	OutputType      string       `yaml:"outputType"`
 }
 
 // URLCommand maps an HTTP request (method and path) to a command configuration.
@@ -71,5 +76,42 @@ func LoadConfigFromString(content string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
+	SetDefaults(&config)
+
 	return &config, nil
+}
+
+// SetDefaults sets default values for the configuration if they are not provided.
+func SetDefaults(config *Config) {
+	if config.Server.Address == "" {
+		if config.Server.HTTPSConfig.Enabled {
+			config.Server.Address = "127.0.0.1:8443"
+		} else {
+			config.Server.Address = "127.0.0.1:8080"
+		}
+	}
+
+	for i := range config.URLCommands {
+		setBodyAsTextDefault(&config.URLCommands[i].Params)
+		setBodyAsJSONDefault(&config.URLCommands[i].Params)
+	}
+}
+
+// IsTrue returns true if b is not nil and its value is true.
+func IsTrue(b *bool) bool {
+	return b != nil && *b
+}
+
+func setBodyAsTextDefault(params *ParamsConfig) {
+	if params.BodyAsText == nil {
+		trueVal := true
+		params.BodyAsText = &trueVal
+	}
+}
+
+func setBodyAsJSONDefault(params *ParamsConfig) {
+	if params.BodyAsJSON == nil {
+		falseVal := false
+		params.BodyAsJSON = &falseVal
+	}
 }

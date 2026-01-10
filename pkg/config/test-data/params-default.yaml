@@ -1,0 +1,3 @@
+urlCommands:
+  - url: /test
+    commandTemplate: echo hello

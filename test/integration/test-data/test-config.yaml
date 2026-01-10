@@ -20,12 +20,12 @@ urlCommands:
       /bin/echo
       -n
       {{.bodyAsText}}
-    bodyAsText: true
     timeout: 5
   - url: POST /cmd/echo-json
     commandTemplate: |
       /bin/echo
       -n
       {{.bodyAsJson}}
-    bodyAsJson: true
+    params:
+      bodyAsJson: true
     timeout: 5
