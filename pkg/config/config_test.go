@@ -50,7 +50,6 @@ func TestLoadConfig(t *testing.T) {
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/bin/echo\n{{.param1}}\n{{.param2}}\n",
 						Params: config.ParamsConfig{
-							BodyAsText: ptrBool(true),
 							BodyAsJSON: ptrBool(true),
 						},
 						Timeout:    5,
@@ -63,7 +62,6 @@ func TestLoadConfig(t *testing.T) {
 					CommandConfig: config.CommandConfig{
 						CommandTemplate: "/usr/bin/sleep\n20\n",
 						Params: config.ParamsConfig{
-							BodyAsText: ptrBool(true),
 							BodyAsJSON: ptrBool(false),
 						},
 						Timeout: 30,
@@ -179,10 +177,6 @@ func TestSetDefaults(t *testing.T) {
 
 		params := cfg.URLCommands[0].Params
 
-		if !config.IsTrue(params.BodyAsText) {
-			t.Errorf("expected BodyAsText to be true by default, got %v", params.BodyAsText)
-		}
-
 		if config.IsTrue(params.BodyAsJSON) {
 			t.Errorf("expected BodyAsJSON to be false by default, got %v", params.BodyAsJSON)
 		}
@@ -196,10 +190,6 @@ func TestSetDefaults(t *testing.T) {
 
 		params := cfg.URLCommands[0].Params
 
-		if config.IsTrue(params.BodyAsText) {
-			t.Errorf("expected BodyAsText to be false, got %v", params.BodyAsText)
-		}
-
 		if !config.IsTrue(params.BodyAsJSON) {
 			t.Errorf("expected BodyAsJSON to be true, got %v", params.BodyAsJSON)
 		}
@@ -212,10 +202,6 @@ func TestSetDefaults(t *testing.T) {
 		cfg := mustLoadConfig(t, configPath)
 
 		params := cfg.URLCommands[0].Params
-
-		if !config.IsTrue(params.BodyAsText) {
-			t.Errorf("expected BodyAsText to be true (default), got %v", params.BodyAsText)
-		}
 
 		if !config.IsTrue(params.BodyAsJSON) {
 			t.Errorf("expected BodyAsJSON to be true (overridden), got %v", params.BodyAsJSON)

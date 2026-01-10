@@ -38,7 +38,6 @@ type AuthorizationConfig struct {
 
 // ParamsConfig contains optional configuration for request body processing.
 type ParamsConfig struct {
-	BodyAsText *bool `yaml:"bodyAsText"`
 	BodyAsJSON *bool `yaml:"bodyAsJson"`
 }
 
@@ -92,7 +91,6 @@ func SetDefaults(config *Config) {
 	}
 
 	for i := range config.URLCommands {
-		setBodyAsTextDefault(&config.URLCommands[i].Params)
 		setBodyAsJSONDefault(&config.URLCommands[i].Params)
 	}
 }
@@ -100,13 +98,6 @@ func SetDefaults(config *Config) {
 // IsTrue returns true if b is not nil and its value is true.
 func IsTrue(b *bool) bool {
 	return b != nil && *b
-}
-
-func setBodyAsTextDefault(params *ParamsConfig) {
-	if params.BodyAsText == nil {
-		trueVal := true
-		params.BodyAsText = &trueVal
-	}
 }
 
 func setBodyAsJSONDefault(params *ParamsConfig) {

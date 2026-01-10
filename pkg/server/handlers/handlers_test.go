@@ -216,7 +216,6 @@ func TestExecutionHandler(t *testing.T) {
 		method          string
 		url             string
 		commandTemplate string
-		bodyAsText      bool
 		bodyAsJSON      bool
 		requestBody     string
 		expectedArgs    []string
@@ -229,11 +228,10 @@ func TestExecutionHandler(t *testing.T) {
 			expectedArgs:    []string{"bar"},
 		},
 		{
-			name:            "With bodyAsText parameter",
+			name:            "With body parameters",
 			method:          http.MethodPost,
 			url:             "/test",
 			commandTemplate: "echo\n{{.body.text}}",
-			bodyAsText:      true,
 			requestBody:     "hello body",
 			expectedArgs:    []string{"hello body"},
 		},
@@ -271,7 +269,6 @@ func TestExecutionHandler(t *testing.T) {
 				CommandConfig: config.CommandConfig{
 					CommandTemplate: tc.commandTemplate,
 					Params: config.ParamsConfig{
-						BodyAsText: ptrBool(tc.bodyAsText),
 						BodyAsJSON: ptrBool(tc.bodyAsJSON),
 					},
 				},
