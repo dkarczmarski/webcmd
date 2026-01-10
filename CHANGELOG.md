@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+- Added HTTP headers extraction in command templates (`{{.headers.Header_Name}}`).
+
+### Removed
+- Removed `bodyAsText` option from configuration (request body as text is now always available via `{{.body.text}}`).
+
 ## v0.2.0
 
 ### Added
