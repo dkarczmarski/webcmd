@@ -183,6 +183,22 @@ curl -H "X-Api-Key: MYSECRETKEY" \
 
 When you close the connection, the command is stopped.
 
+## Command template
+
+The `commandTemplate` uses Go's `text/template` syntax to inject data from the HTTP request into your command. The following data sources are available:
+
+* `url` - provides access to URL query parameters.
+  Example: `{{.url.param_name}}`
+
+* `body` - provides access to the request body.
+  - `{{.body.text}}` - the entire request body as a plain string (enabled by default).
+  - `{{.body.json}}` - the request body parsed as JSON (requires `params.bodyAsJson: true` in configuration).
+  - `{{.body.json.field_name}}` - specific field from the JSON body.
+
+* `headers` - provides access to HTTP request headers.
+  Header names are normalized by replacing hyphens (`-`) with underscores (`_`).
+  Example: `{{.headers.X_Api_Key}}` or `{{.headers.User_Agent}}`
+
 ## Configuration (`config.yaml`)
 
 ### `server`
