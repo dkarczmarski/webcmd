@@ -188,7 +188,7 @@ When you close the connection, the command is stopped.
 The `commandTemplate` uses Go's `text/template` syntax to inject data from the HTTP request into your command. The following data sources are available:
 
 * `url` - provides access to URL query parameters.
-  Example: `{{.url.param_name}}`
+  Example: `{{.url.param_name}}` .
 
 * `body` - provides access to the request body.
   - `{{.body.text}}` - the entire request body as a plain string (enabled by default).
@@ -197,7 +197,7 @@ The `commandTemplate` uses Go's `text/template` syntax to inject data from the H
 
 * `headers` - provides access to HTTP request headers.
   Header names are normalized by replacing hyphens (`-`) with underscores (`_`).
-  Example: `{{.headers.X_Api_Key}}` or `{{.headers.User_Agent}}`
+  Example: `{{.headers.X_Api_Key}}` or `{{.headers.User_Agent}}` .
 
 ## Configuration (`config.yaml`)
 
@@ -275,9 +275,6 @@ Each entry contains:
 * `params` *(optional)*
   Optional configuration for request body processing:
 
-    * `bodyAsText` *(optional)*
-      If set to `true`, the HTTP request body will be read and made available in the command template as `{{.body.text}}`. Default: `true`.
-
     * `bodyAsJson` *(optional)*
       If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template under `{{.body.json}}`.
       - Allows access to individual fields, e.g., `{{.body.json.field_name}}`.
@@ -285,7 +282,9 @@ Each entry contains:
       - Requires a valid `Content-Type: application/json` header.
       - Default: `false`.
 
-Example 1 - Using `bodyAsText`:
+The HTTP request body is always available as plain text in the command template as `{{.body.text}}`.
+
+Example 1 - Accessing request body as text:
 
 ```yaml
 urlCommands:

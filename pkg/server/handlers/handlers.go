@@ -208,10 +208,6 @@ func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]in
 		"headers": headers,
 	}
 
-	if !config.IsTrue(cmd.CommandConfig.Params.BodyAsText) && !config.IsTrue(cmd.CommandConfig.Params.BodyAsJSON) {
-		return params, nil
-	}
-
 	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, httpx.NewWebError(
@@ -221,9 +217,7 @@ func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]in
 		)
 	}
 
-	if config.IsTrue(cmd.CommandConfig.Params.BodyAsText) {
-		processBodyAsText(bodyBytes, params)
-	}
+	setNestedParam(params, "body", "text", string(bodyBytes))
 
 	if config.IsTrue(cmd.CommandConfig.Params.BodyAsJSON) {
 		if err := processBodyAsJSON(bodyBytes, params); err != nil {
@@ -259,10 +253,6 @@ func extractHeaders(request *http.Request) map[string]string {
 	}
 
 	return headers
-}
-
-func processBodyAsText(bodyBytes []byte, params map[string]interface{}) {
-	setNestedParam(params, "body", "text", string(bodyBytes))
 }
 
 type JSONBody map[string]interface{}
