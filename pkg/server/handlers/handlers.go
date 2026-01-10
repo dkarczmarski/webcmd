@@ -4,7 +4,6 @@ package handlers
 //go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -165,23 +164,8 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 			return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 		}
 
-		queryParams := extractQueryParams(request)
-		params := map[string]interface{}{
-			"url": queryParams,
-		}
-
-		bodyBytes, err := bufferRequestBody(request)
+		params, err := extractParams(request, cmd)
 		if err != nil {
-			return err
-		}
-
-		if err := processBodyAsText(request, &cmd.CommandConfig, params); err != nil {
-			return err
-		}
-
-		resetRequestBody(request, bodyBytes)
-
-		if err := processBodyAsJSON(request, &cmd.CommandConfig, params); err != nil {
 			return err
 		}
 
@@ -216,15 +200,14 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 	})
 }
 
-func resetRequestBody(request *http.Request, bodyBytes []byte) {
-	if request.Body != nil {
-		request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]interface{}, error) {
+	queryParams := extractQueryParams(request)
+	params := map[string]interface{}{
+		"url": queryParams,
 	}
-}
 
-func bufferRequestBody(request *http.Request) ([]byte, error) {
-	if request.Body == nil {
-		return nil, nil
+	if !config.IsTrue(cmd.CommandConfig.Params.BodyAsText) && !config.IsTrue(cmd.CommandConfig.Params.BodyAsJSON) {
+		return params, nil
 	}
 
 	bodyBytes, err := io.ReadAll(request.Body)
@@ -236,9 +219,17 @@ func bufferRequestBody(request *http.Request) ([]byte, error) {
 		)
 	}
 
-	resetRequestBody(request, bodyBytes)
+	if config.IsTrue(cmd.CommandConfig.Params.BodyAsText) {
+		processBodyAsText(bodyBytes, params)
+	}
 
-	return bodyBytes, nil
+	if config.IsTrue(cmd.CommandConfig.Params.BodyAsJSON) {
+		if err := processBodyAsJSON(bodyBytes, params); err != nil {
+			return nil, err
+		}
+	}
+
+	return params, nil
 }
 
 func extractQueryParams(request *http.Request) map[string]string {
@@ -254,27 +245,8 @@ func extractQueryParams(request *http.Request) map[string]string {
 	return params
 }
 
-func processBodyAsText(
-	request *http.Request,
-	commandConfig *config.CommandConfig,
-	params map[string]interface{},
-) error {
-	if !config.IsTrue(commandConfig.Params.BodyAsText) {
-		return nil
-	}
-
-	bodyBytes, err := io.ReadAll(request.Body)
-	if err != nil {
-		return httpx.NewWebError(
-			fmt.Errorf("failed to read request body: %w", err),
-			http.StatusInternalServerError,
-			"",
-		)
-	}
-
+func processBodyAsText(bodyBytes []byte, params map[string]interface{}) {
 	setNestedParam(params, "body", "text", string(bodyBytes))
-
-	return nil
 }
 
 type JSONBody map[string]interface{}
@@ -288,20 +260,7 @@ func (j JSONBody) String() string {
 	return string(b)
 }
 
-func processBodyAsJSON(
-	request *http.Request,
-	commandConfig *config.CommandConfig,
-	params map[string]interface{},
-) error {
-	if !config.IsTrue(commandConfig.Params.BodyAsJSON) {
-		return nil
-	}
-
-	bodyBytes, err := io.ReadAll(request.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read request body: %w", err)
-	}
-
+func processBodyAsJSON(bodyBytes []byte, params map[string]interface{}) error {
 	var bodyJSON JSONBody
 	if err := json.Unmarshal(bodyBytes, &bodyJSON); err != nil {
 		return httpx.NewWebError(
