@@ -19,13 +19,13 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       -n
-      {{.bodyAsText}}
+      {{.body.text}}
     timeout: 5
   - url: POST /cmd/echo-json
     commandTemplate: |
       /bin/echo
       -n
-      {{.bodyAsJson.message}}
+      {{.body.json.message}}
     params:
       bodyAsJson: true
     timeout: 5

@@ -260,12 +260,12 @@ Each entry contains:
   Optional configuration for request body processing:
 
     * `bodyAsText` *(optional)*
-      If set to `true`, the HTTP request body will be read and made available in the command template as `{{.bodyAsText}}`. Default: `true`.
+      If set to `true`, the HTTP request body will be read and made available in the command template as `{{.body.text}}`. Default: `true`.
 
     * `bodyAsJson` *(optional)*
-      If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template as `{{.bodyAsJson}}`.
-      - Allows access to individual fields, e.g., `{{.bodyAsJson.field_name}}`.
-      - Using `{{.bodyAsJson}}` without a field will insert the full, valid JSON string.
+      If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template under `{{.body.json}}`.
+      - Allows access to individual fields, e.g., `{{.body.json.field_name}}`.
+      - Using `{{.body.json}}` without a field will insert the full, valid JSON string.
       - Requires a valid `Content-Type: application/json` header.
       - Default: `false`.
 
@@ -277,7 +277,7 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       -n
-      {{.bodyAsText}}
+      {{.body.text}}
 ```
 
 Call the endpoint:
@@ -297,9 +297,9 @@ urlCommands:
     commandTemplate: |
       /usr/local/bin/deploy.sh
       --project
-      {{.bodyAsJson.project_name}}
+      {{.body.json.project_name}}
       --payload
-      {{.bodyAsJson}}
+      {{.body.json}}
 ```
 
 Call the endpoint:
@@ -311,8 +311,8 @@ curl -X POST http://localhost:8080/deploy \
 ```
 
 In the above example:
-- `{{.bodyAsJson.project_name}}` will be replaced by `my-app`.
-- `{{.bodyAsJson}}` will be replaced by the full JSON string: `{"project_name":"my-app","version":"1.0.1"}`.
+- `{{.body.json.project_name}}` will be replaced by `my-app`.
+- `{{.body.json}}` will be replaced by the full JSON string: `{"project_name":"my-app","version":"1.0.1"}`.
 
 Example 3 - using URL query parameters:
 
