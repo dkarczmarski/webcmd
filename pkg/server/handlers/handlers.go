@@ -272,7 +272,7 @@ func processBodyAsText(
 		)
 	}
 
-	params["bodyAsText"] = string(bodyBytes)
+	setNestedParam(params, "body", "text", string(bodyBytes))
 
 	return nil
 }
@@ -311,7 +311,7 @@ func processBodyAsJSON(
 		)
 	}
 
-	params["bodyAsJson"] = bodyJSON
+	setNestedParam(params, "body", "json", bodyJSON)
 
 	return nil
 }
@@ -362,4 +362,14 @@ func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error)
 	}
 
 	return cmd, nil
+}
+
+func setNestedParam(params map[string]interface{}, parentKey, childKey string, value interface{}) {
+	if _, ok := params[parentKey]; !ok {
+		params[parentKey] = make(map[string]interface{})
+	}
+
+	if parentMap, ok := params[parentKey].(map[string]interface{}); ok {
+		parentMap[childKey] = value
+	}
 }
