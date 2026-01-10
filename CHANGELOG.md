@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.0
+
+### Added
+- Added `params` section in command configuration (`URLCommand`) for explicit control over request body processing.
+- Introduced default values for configuration:
+    - Server listens on `127.0.0.1:8080` by default (or `127.0.0.1:8443` for HTTPS).
+    - `bodyAsText` is enabled by default (`true`).
+    - `bodyAsJson` is disabled by default (`false`).
+
+### Changed
+- **Breaking Change**: Updated request body access in command templates (`commandTemplate`):
+    - Replaced `{{.bodyAsText}}` with `{{.body.text}}`.
+    - Replaced `{{.bodyAsJson}}` with `{{.body.json}}`.
+
 ## v0.1.0
 
 - Execute system commands via HTTP endpoints.
