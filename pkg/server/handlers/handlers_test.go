@@ -63,6 +63,81 @@ func TestExecutionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("WithHeaders", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
+		mockExecutor.EXPECT().
+			RunCommand(gomock.Any(), "echo", []string{"X-Test-Value", "X-Test-Value"}, gomock.Any()).
+			Return(0, nil)
+
+		handler := handlers.ExecutionHandler(mockExecutor)
+
+		cmd := &config.URLCommand{
+			URL: "GET /test",
+			CommandConfig: config.CommandConfig{
+				CommandTemplate: "echo\n{{ .headers.X_Test_Header }}\n{{ index .headers \"X_Test_Header\" }}",
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("X-Test-Header", "X-Test-Value")
+		ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmd)
+		req = req.WithContext(ctx)
+
+		recorder := httptest.NewRecorder()
+
+		err := handler.ServeHTTP(recorder, req)
+		if err != nil {
+			t.Errorf("ExecutionHandler returned error: %v", err)
+		}
+
+		if recorder.Code != http.StatusOK {
+			t.Errorf("expected status OK, got %v", recorder.Code)
+		}
+	})
+
+	t.Run("WithMultipleHeaders", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
+		mockExecutor.EXPECT().
+			RunCommand(gomock.Any(), "echo", []string{"value1; value2"}, gomock.Any()).
+			Return(0, nil)
+
+		handler := handlers.ExecutionHandler(mockExecutor)
+
+		cmd := &config.URLCommand{
+			URL: "GET /test",
+			CommandConfig: config.CommandConfig{
+				CommandTemplate: "echo\n{{ .headers.X_Multi_Header }}",
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Add("X-Multi-Header", "value1")
+		req.Header.Add("X-Multi-Header", "value2")
+		ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmd)
+		req = req.WithContext(ctx)
+
+		recorder := httptest.NewRecorder()
+
+		err := handler.ServeHTTP(recorder, req)
+		if err != nil {
+			t.Errorf("ExecutionHandler returned error: %v", err)
+		}
+
+		if recorder.Code != http.StatusOK {
+			t.Errorf("expected status OK, got %v", recorder.Code)
+		}
+	})
+
 	t.Run("CommandNotFound", func(t *testing.T) {
 		t.Parallel()
 
