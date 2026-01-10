@@ -202,8 +202,10 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 
 func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]interface{}, error) {
 	queryParams := extractQueryParams(request)
+	headers := extractHeaders(request)
 	params := map[string]interface{}{
-		"url": queryParams,
+		"url":     queryParams,
+		"headers": headers,
 	}
 
 	if !config.IsTrue(cmd.CommandConfig.Params.BodyAsText) && !config.IsTrue(cmd.CommandConfig.Params.BodyAsJSON) {
@@ -243,6 +245,20 @@ func extractQueryParams(request *http.Request) map[string]string {
 	}
 
 	return params
+}
+
+func extractHeaders(request *http.Request) map[string]string {
+	headers := make(map[string]string)
+
+	for key, values := range request.Header {
+		if len(values) > 0 {
+			// Normalize keys for Go templates (replace '-' with '_')
+			normalizedKey := strings.ReplaceAll(key, "-", "_")
+			headers[normalizedKey] = strings.Join(values, "; ")
+		}
+	}
+
+	return headers
 }
 
 func processBodyAsText(bodyBytes []byte, params map[string]interface{}) {
