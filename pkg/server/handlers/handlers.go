@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
@@ -301,6 +302,10 @@ func executeCommand(
 
 	cmd := runner.Command(ctx, command, arguments...)
 
+	//nolint:exhaustruct
+	cmd.SetSysProcAttr(&syscall.SysProcAttr{
+		Setpgid: true,
+	})
 	cmd.SetStdout(responseWriter)
 	cmd.SetStderr(responseWriter)
 

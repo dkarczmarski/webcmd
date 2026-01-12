@@ -14,6 +14,7 @@ import (
 	io "io"
 	os "os"
 	reflect "reflect"
+	syscall "syscall"
 
 	cmdrunner "github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	gomock "go.uber.org/mock/gomock"
@@ -216,6 +217,42 @@ func (c *MockCommandSetStdoutCall) Do(f func(io.Writer)) *MockCommandSetStdoutCa
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockCommandSetStdoutCall) DoAndReturn(f func(io.Writer)) *MockCommandSetStdoutCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// SetSysProcAttr mocks base method.
+func (m *MockCommand) SetSysProcAttr(attr *syscall.SysProcAttr) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetSysProcAttr", attr)
+}
+
+// SetSysProcAttr indicates an expected call of SetSysProcAttr.
+func (mr *MockCommandMockRecorder) SetSysProcAttr(attr any) *MockCommandSetSysProcAttrCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSysProcAttr", reflect.TypeOf((*MockCommand)(nil).SetSysProcAttr), attr)
+	return &MockCommandSetSysProcAttrCall{Call: call}
+}
+
+// MockCommandSetSysProcAttrCall wrap *gomock.Call
+type MockCommandSetSysProcAttrCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockCommandSetSysProcAttrCall) Return() *MockCommandSetSysProcAttrCall {
+	c.Call = c.Call.Return()
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockCommandSetSysProcAttrCall) Do(f func(*syscall.SysProcAttr)) *MockCommandSetSysProcAttrCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockCommandSetSysProcAttrCall) DoAndReturn(f func(*syscall.SysProcAttr)) *MockCommandSetSysProcAttrCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

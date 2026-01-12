@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 // Result represents the result of a command execution.
@@ -21,6 +22,7 @@ type Command interface {
 	Wait() error
 	SetStdout(w io.Writer)
 	SetStderr(w io.Writer)
+	SetSysProcAttr(attr *syscall.SysProcAttr)
 	ProcessState() *os.ProcessState
 }
 
@@ -39,6 +41,10 @@ func (c *realCommand) SetStdout(w io.Writer) {
 
 func (c *realCommand) SetStderr(w io.Writer) {
 	c.Cmd.Stderr = w
+}
+
+func (c *realCommand) SetSysProcAttr(attr *syscall.SysProcAttr) {
+	c.Cmd.SysProcAttr = attr
 }
 
 func (c *realCommand) ProcessState() *os.ProcessState {
