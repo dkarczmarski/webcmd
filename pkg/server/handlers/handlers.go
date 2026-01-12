@@ -172,30 +172,58 @@ func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
 			return err
 		}
 
-		var writer http.ResponseWriter
-
-		switch cmd.CommandConfig.OutputType {
-		case "stream":
-			if _, ok := responseWriter.(http.Flusher); !ok {
-				return fmt.Errorf("streaming not supported: %w", ErrBadConfiguration)
-			}
-
-			writer = newFlushResponseWriter(responseWriter)
-
-			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			responseWriter.Header().Set("Cache-Control", "no-cache")
-			// nginx:
-			responseWriter.Header().Set("X-Accel-Buffering", "no")
-		case "", "text":
-			writer = responseWriter
-
-			responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		default:
-			return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, cmd.CommandConfig.OutputType)
+		writer, async, err := prepareOutput(responseWriter, cmd.CommandConfig.OutputType)
+		if err != nil {
+			return err
 		}
 
-		return executeCommand(request.Context(), runner, cmdResult.Command, cmdResult.Arguments, writer)
+		exitCode, exitErr := executeCommand(
+			request.Context(), runner, cmdResult.Command, cmdResult.Arguments, writer, async,
+		)
+
+		if exitCode != 0 || exitErr != nil {
+			log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, exitErr)
+
+			errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, exitErr)
+			if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
+				log.Printf("[ERROR] Failed to write error message: %v", err)
+			}
+		}
+
+		return nil
 	})
+}
+
+func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Writer, bool, error) {
+	var (
+		writer io.Writer
+		async  bool
+	)
+
+	switch outputType {
+	case "none":
+		writer = io.Discard
+		async = true
+	case "stream":
+		if _, ok := responseWriter.(http.Flusher); !ok {
+			return nil, false, fmt.Errorf("streaming not supported: %w", ErrBadConfiguration)
+		}
+
+		writer = newFlushResponseWriter(responseWriter)
+
+		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		responseWriter.Header().Set("Cache-Control", "no-cache")
+		// nginx:
+		responseWriter.Header().Set("X-Accel-Buffering", "no")
+	case "", "text":
+		writer = responseWriter
+
+		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	default:
+		return nil, false, fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType)
+	}
+
+	return writer, async, nil
 }
 
 func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]interface{}, error) {
@@ -296,37 +324,71 @@ func executeCommand(
 	runner cmdrunner.Runner,
 	command string,
 	arguments []string,
-	responseWriter http.ResponseWriter,
-) error {
+	writer io.Writer,
+	async bool,
+) (int, error) {
 	log.Printf("[INFO] Executing command: %s %v", command, arguments)
 
-	cmd := runner.Command(ctx, command, arguments...)
+	cmdCtx, cmdCtxCancel := prepareContext(ctx, async)
+	cmd := runner.Command(cmdCtx, command, arguments...)
 
 	//nolint:exhaustruct
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{
 		Setpgid: true,
 	})
-	cmd.SetStdout(responseWriter)
-	cmd.SetStderr(responseWriter)
+	cmd.SetStdout(writer)
+	cmd.SetStderr(writer)
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start command: %w", err)
+		if cmdCtxCancel != nil {
+			cmdCtxCancel()
+		}
+
+		return determineExitCodeAndError(cmdCtx, cmd, err)
+	}
+
+	if async {
+		handleAsyncWait(cmdCtx, cmd, command, cmdCtxCancel)
+
+		return determineExitCodeAndError(cmdCtx, cmd, nil)
 	}
 
 	err := cmd.Wait()
 
-	exitCode, exitErr := determineExitCodeAndError(ctx, cmd, err)
-
-	if exitCode != 0 || exitErr != nil {
-		log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, exitErr)
-
-		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, exitErr)
-		if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
-			log.Printf("[ERROR] Failed to write error message: %v", err)
-		}
+	if cmdCtxCancel != nil {
+		cmdCtxCancel()
 	}
 
-	return nil
+	return determineExitCodeAndError(cmdCtx, cmd, err)
+}
+
+func prepareContext(ctx context.Context, async bool) (context.Context, context.CancelFunc) {
+	if !async {
+		return ctx, nil
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		return context.WithDeadline(context.WithoutCancel(ctx), deadline)
+	}
+
+	return context.WithoutCancel(ctx), nil
+}
+
+func handleAsyncWait(_ context.Context, cmd cmdrunner.Command, command string, cancel context.CancelFunc) {
+	go func() {
+		log.Printf("[INFO] Asynchronously waiting for command to finish: %s", command)
+
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			log.Printf("[ERROR] Asynchronous command failed: %s, error: %v", command, waitErr)
+		} else {
+			log.Printf("[INFO] Asynchronous command finished successfully: %s", command)
+		}
+
+		if cancel != nil {
+			cancel()
+		}
+	}()
 }
 
 func determineExitCodeAndError(ctx context.Context, cmd cmdrunner.Command, err error) (int, error) {

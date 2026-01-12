@@ -183,6 +183,34 @@ curl -H "X-Api-Key: MYSECRETKEY" \
 
 When you close the connection, the command is stopped.
 
+#### Example 4 - Asynchronous execution
+
+We want to trigger a long-running background task (e.g., a backup script) without waiting for it to finish.
+
+* Endpoint: `POST /maintenance/backup`.
+* Command: `/usr/local/bin/backup.sh`.
+* Output type: `none` (asynchronous).
+* Timeout: `3600` (the background task will be killed if it runs longer than 1 hour).
+
+Define `config.yaml`:
+
+```yaml
+urlCommands:
+  - url: POST /maintenance/backup
+    commandTemplate: |
+      /usr/local/bin/backup.sh
+    outputType: none
+    timeout: 3600
+```
+
+Call the endpoint:
+
+```shell
+curl -X POST http://localhost:8080/maintenance/backup
+```
+
+The server will return an immediate response as soon as the command starts. The command will continue running in the background. Even in asynchronous mode, the optional `timeout` is respected - if the process exceeds the specified time, it will be terminated.
+
 ## Command template
 
 The `commandTemplate` uses Go's `text/template` syntax to inject data from the HTTP request into your command. The following data sources are available:
@@ -271,6 +299,7 @@ Each entry contains:
   Determines how the command output is returned:
   - `text`: (default) returns the full output once the command finishes.
   - `stream`: returns the output in real-time as it is produced by the command.
+  - `none`: executes the command asynchronously in the background. The HTTP response is sent immediately after the process starts, and any output is discarded. Note that the optional `timeout` is still respected for background processes.
 
 * `params` *(optional)*
   Optional configuration for request body processing:

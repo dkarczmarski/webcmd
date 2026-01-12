@@ -32,4 +32,5 @@ GET http://localhost:8080/stream/time
 ### Test stream time with timeout 5 seconds
 GET http://localhost:8080/stream/time-with-timeout-5
 
-
+### Test sleep command (async)
+GET http://localhost:8080/cmd/sleep
