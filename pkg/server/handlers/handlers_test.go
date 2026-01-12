@@ -25,16 +25,22 @@ func TestExecutionHandler(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "echo", []string{"hello"}, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
-				_, _ = w.Write([]byte("hello\n"))
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
 
-				return 0, nil
-			})
+		mockRunner.EXPECT().
+			Command(gomock.Any(), "echo", []string{"hello"}).
+			Return(mockCommand)
 
-		handler := handlers.ExecutionHandler(mockExecutor)
+		mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
+			_, _ = w.Write([]byte("hello\n"))
+		})
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(nil)
+		mockCommand.EXPECT().Wait().Return(nil)
+		mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+		handler := handlers.ExecutionHandler(mockRunner)
 
 		cmd := &config.URLCommand{
 			URL: "GET /test",
@@ -69,12 +75,20 @@ func TestExecutionHandler(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "echo", []string{"X-Test-Value", "X-Test-Value"}, gomock.Any()).
-			Return(0, nil)
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
 
-		handler := handlers.ExecutionHandler(mockExecutor)
+		mockRunner.EXPECT().
+			Command(gomock.Any(), "echo", []string{"X-Test-Value", "X-Test-Value"}).
+			Return(mockCommand)
+
+		mockCommand.EXPECT().SetStdout(gomock.Any())
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(nil)
+		mockCommand.EXPECT().Wait().Return(nil)
+		mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+		handler := handlers.ExecutionHandler(mockRunner)
 
 		cmd := &config.URLCommand{
 			URL: "GET /test",
@@ -106,12 +120,20 @@ func TestExecutionHandler(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "echo", []string{"value1; value2"}, gomock.Any()).
-			Return(0, nil)
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
 
-		handler := handlers.ExecutionHandler(mockExecutor)
+		mockRunner.EXPECT().
+			Command(gomock.Any(), "echo", []string{"value1; value2"}).
+			Return(mockCommand)
+
+		mockCommand.EXPECT().SetStdout(gomock.Any())
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(nil)
+		mockCommand.EXPECT().Wait().Return(nil)
+		mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+		handler := handlers.ExecutionHandler(mockRunner)
 
 		cmd := &config.URLCommand{
 			URL: "GET /test",
@@ -144,8 +166,7 @@ func TestExecutionHandler(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-		handler := handlers.ExecutionHandler(mockExecutor)
+		handler := handlers.ExecutionHandler(nil)
 
 		req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 		// No URLCommand in context
@@ -173,16 +194,22 @@ func TestExecutionHandler(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-		mockExecutor.EXPECT().
-			RunCommand(gomock.Any(), "exit", []string{"1"}, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
-				_, _ = w.Write([]byte("error message"))
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
 
-				return 1, errors.New("exit status 1")
-			})
+		mockRunner.EXPECT().
+			Command(gomock.Any(), "exit", []string{"1"}).
+			Return(mockCommand)
 
-		handler := handlers.ExecutionHandler(mockExecutor)
+		mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
+			_, _ = w.Write([]byte("error message"))
+		})
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(nil)
+		mockCommand.EXPECT().Wait().Return(errors.New("exit status 1"))
+		mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+		handler := handlers.ExecutionHandler(mockRunner)
 
 		cmd := &config.URLCommand{
 			URL: "GET /fail",
@@ -202,7 +229,7 @@ func TestExecutionHandler(t *testing.T) {
 			t.Fatalf("expected nil error, got %v", err)
 		}
 
-		if !strings.Contains(recorder.Body.String(), "Command failed with exit code: 1") {
+		if !strings.Contains(recorder.Body.String(), "Command failed with exit code: -1") {
 			t.Errorf("expected failure message in body, got %q", recorder.Body.String())
 		}
 
@@ -253,16 +280,22 @@ func TestExecutionHandler(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			mockExecutor := mocks.NewMockCommandExecutor(ctrl)
-			mockExecutor.EXPECT().
-				RunCommand(gomock.Any(), "echo", tc.expectedArgs, gomock.Any()).
-				DoAndReturn(func(_ context.Context, _ string, _ []string, w io.Writer) (int, error) {
-					_, _ = w.Write([]byte("ok"))
+			mockRunner := mocks.NewMockRunner(ctrl)
+			mockCommand := mocks.NewMockCommand(ctrl)
 
-					return 0, nil
-				})
+			mockRunner.EXPECT().
+				Command(gomock.Any(), "echo", tc.expectedArgs).
+				Return(mockCommand)
 
-			handler := handlers.ExecutionHandler(mockExecutor)
+			mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
+				_, _ = w.Write([]byte("ok"))
+			})
+			mockCommand.EXPECT().SetStderr(gomock.Any())
+			mockCommand.EXPECT().Start().Return(nil)
+			mockCommand.EXPECT().Wait().Return(nil)
+			mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+			handler := handlers.ExecutionHandler(mockRunner)
 
 			cmd := &config.URLCommand{
 				URL: tc.url,

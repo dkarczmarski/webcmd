@@ -4,7 +4,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -23,21 +22,7 @@ type Server struct {
 
 // Options defines the configuration options for the Server.
 type Options struct {
-	Addr     string
-	Executor handlers.CommandExecutor
-}
-
-type defaultExecutor struct{}
-
-// RunCommand executes a command based on the provided command and arguments.
-func (e *defaultExecutor) RunCommand(
-	ctx context.Context,
-	command string,
-	arguments []string,
-	writer io.Writer,
-) (int, error) {
-	//nolint:wrapcheck // error is intentionally forwarded as-is to the client
-	return cmdrunner.RunCommand(ctx, command, arguments, writer)
+	Addr string
 }
 
 const (
@@ -57,8 +42,7 @@ func WithAddr(addr string) func(*Options) {
 // New creates and initializes a new Server instance with the given configuration and options.
 func New(configuration *config.Config, opts ...func(*Options)) *Server {
 	options := Options{
-		Addr:     "127.0.0.1:8080",
-		Executor: &defaultExecutor{},
+		Addr: "127.0.0.1:8080",
 	}
 
 	for _, opt := range opts {
@@ -75,7 +59,7 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 				handlers.AuthorizationMiddleware(),
 				handlers.TimeoutMiddleware(),
 			),
-			handlers.ExecutionHandler(options.Executor),
+			handlers.ExecutionHandler(&cmdrunner.RealRunner{}),
 		)))
 
 	//nolint:exhaustruct

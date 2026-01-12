@@ -1,7 +1,7 @@
 // Package handlers provides HTTP handlers and middleware for the server.
 package handlers
 
-//go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_handlers.go -package=mocks github.com/dkarczmarski/webcmd/pkg/server/handlers CommandExecutor
+//go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_cmdrunner.go -package=mocks github.com/dkarczmarski/webcmd/pkg/cmdrunner Runner,Command
 
 import (
 	"context"
@@ -11,10 +11,12 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
+	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 )
@@ -146,16 +148,11 @@ func TimeoutMiddleware() httpx.Middleware {
 	}
 }
 
-// CommandExecutor is an interface for types that can run system commands.
-type CommandExecutor interface {
-	RunCommand(ctx context.Context, command string, arguments []string, writer io.Writer) (int, error)
-}
-
 // ExecutionHandler creates a new WebHandler that executes the command
 // associated with the URLCommand found in the request context.
 //
 //nolint:ireturn
-func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
+func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
 		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
 
@@ -196,7 +193,7 @@ func ExecutionHandler(executor CommandExecutor) httpx.WebHandler {
 			return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, cmd.CommandConfig.OutputType)
 		}
 
-		return executeCommand(request.Context(), executor, *cmdResult, writer)
+		return executeCommand(request.Context(), runner, cmdResult.Command, cmdResult.Arguments, writer)
 	})
 }
 
@@ -295,24 +292,62 @@ func buildCommand(
 
 func executeCommand(
 	ctx context.Context,
-	executor CommandExecutor,
-	cmdResult cmdbuilder.Result,
+	runner cmdrunner.Runner,
+	command string,
+	arguments []string,
 	responseWriter http.ResponseWriter,
 ) error {
-	log.Printf("[INFO] Executing command: %s %v", cmdResult.Command, cmdResult.Arguments)
+	log.Printf("[INFO] Executing command: %s %v", command, arguments)
 
-	exitCode, err := executor.RunCommand(ctx, cmdResult.Command, cmdResult.Arguments, responseWriter)
+	cmd := runner.Command(ctx, command, arguments...)
 
-	if exitCode != 0 {
-		log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, err)
+	cmd.SetStdout(responseWriter)
+	cmd.SetStderr(responseWriter)
 
-		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start command: %w", err)
+	}
+
+	err := cmd.Wait()
+
+	exitCode, exitErr := determineExitCodeAndError(ctx, cmd, err)
+
+	if exitCode != 0 || exitErr != nil {
+		log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, exitErr)
+
+		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, exitErr)
 		if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
 			log.Printf("[ERROR] Failed to write error message: %v", err)
 		}
 	}
 
 	return nil
+}
+
+func determineExitCodeAndError(ctx context.Context, cmd cmdrunner.Command, err error) (int, error) {
+	if err != nil {
+		if isTimeoutOrCanceled(ctx) {
+			//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+			return -1, ctx.Err()
+		}
+
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
+			return exitError.ExitCode(), err
+		}
+
+		return -1, err
+	}
+
+	if cmd.ProcessState() != nil {
+		return cmd.ProcessState().ExitCode(), nil
+	}
+
+	return 0, nil
+}
+
+func isTimeoutOrCanceled(ctx context.Context) bool {
+	return ctx.Err() != nil && (errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled))
 }
 
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
