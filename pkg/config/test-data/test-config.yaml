@@ -18,10 +18,10 @@ urlCommands:
       {{.param2}}
     params:
       bodyAsJson: true
-    timeout: 5
+    timeout: 5s
     outputType: text
   - url: POST /cmd/sleep
     commandTemplate: |
       /usr/bin/sleep
       20
-    timeout: 30
+    timeout: 30s

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -43,10 +44,10 @@ type ParamsConfig struct {
 
 // CommandConfig contains the configuration for a specific command execution.
 type CommandConfig struct {
-	CommandTemplate string       `yaml:"commandTemplate"`
-	Params          ParamsConfig `yaml:"params"`
-	Timeout         int          `yaml:"timeout"`
-	OutputType      string       `yaml:"outputType"`
+	CommandTemplate string         `yaml:"commandTemplate"`
+	Params          ParamsConfig   `yaml:"params"`
+	Timeout         *time.Duration `yaml:"timeout"`
+	OutputType      string         `yaml:"outputType"`
 }
 
 // URLCommand maps an HTTP request (method and path) to a command configuration.

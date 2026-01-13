@@ -154,7 +154,7 @@ docker logs -f my-container
 * Required API key: `MYSECRETKEY`.
 * Command: `docker logs -f my-container`.
 * Output type: `stream`.
-* Timeout: `0` (no timeout).
+* no Timeout.
 
 Define `config.yaml`:
 
@@ -170,7 +170,6 @@ urlCommands:
       -f
       my-container
     outputType: stream
-    timeout: 0
 ```
 
 Call the endpoint:
@@ -190,7 +189,7 @@ We want to trigger a long-running background task (e.g., a backup script) withou
 * Endpoint: `POST /maintenance/backup`.
 * Command: `/usr/local/bin/backup.sh`.
 * Output type: `none` (asynchronous).
-* Timeout: `3600` (the background task will be killed if it runs longer than 1 hour).
+* Timeout: `1h`.
 
 Define `config.yaml`:
 
@@ -200,7 +199,7 @@ urlCommands:
     commandTemplate: |
       /usr/local/bin/backup.sh
     outputType: none
-    timeout: 3600
+    timeout: 1h
 ```
 
 Call the endpoint:
@@ -293,7 +292,7 @@ Each entry contains:
   Request data (e.g. query parameters) can be used as placeholders.
 
 * `timeout` *(optional)*
-  Timeout in seconds for the command execution. `0` means no timeout.
+  Timeout for the command execution (e.g., `30s`, `1m`, `1h`). Format: [Go Duration](https://pkg.go.dev/time#ParseDuration).
 
 * `outputType` *(optional)*
   Determines how the command output is returned:
@@ -369,5 +368,5 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       {{.url.message}}
-    timeout: 30
+    timeout: 30s
 ```

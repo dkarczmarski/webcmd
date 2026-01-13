@@ -336,6 +336,7 @@ func TestExecutionHandler(t *testing.T) {
 						BodyAsJSON: ptrBool(tc.bodyAsJSON),
 					},
 					OutputType: tc.outputType,
+					Timeout:    &tc.timeout,
 				},
 			}
 
