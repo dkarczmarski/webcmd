@@ -29,3 +29,26 @@ urlCommands:
     params:
       bodyAsJson: true
     timeout: 5
+  - url: POST /cmd/forbidden
+    authorizationName: auth-name1
+    commandTemplate: |
+      /bin/echo
+      forbidden
+  - url: GET /cmd/sleep
+    commandTemplate: |
+      /bin/sleep
+      10
+    timeout: 1
+  - url: GET /cmd/false
+    commandTemplate: |
+      /usr/bin/false
+  - url: GET /cmd/stream
+    commandTemplate: |
+      /bin/echo
+      stream-output
+    outputType: stream
+  - url: GET /cmd/none
+    commandTemplate: |
+      /bin/echo
+      no-output
+    outputType: none
