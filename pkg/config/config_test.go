@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
 )
@@ -52,7 +53,7 @@ func TestLoadConfig(t *testing.T) {
 						Params: config.ParamsConfig{
 							BodyAsJSON: ptrBool(true),
 						},
-						Timeout:    5,
+						Timeout:    ptrDuration(5 * time.Second),
 						OutputType: "text",
 					},
 				},
@@ -64,7 +65,7 @@ func TestLoadConfig(t *testing.T) {
 						Params: config.ParamsConfig{
 							BodyAsJSON: ptrBool(false),
 						},
-						Timeout: 30,
+						Timeout: ptrDuration(30 * time.Second),
 					},
 				},
 			},
@@ -108,10 +109,6 @@ func setupTestFile(t *testing.T, fileName string) string {
 	}
 
 	return configPath
-}
-
-func ptrBool(b bool) *bool {
-	return &b
 }
 
 func TestSetDefaults(t *testing.T) {
@@ -218,4 +215,12 @@ func mustLoadConfig(t *testing.T, configPath string) *config.Config {
 	}
 
 	return configuration
+}
+
+func ptrBool(b bool) *bool {
+	return &b
+}
+
+func ptrDuration(d time.Duration) *time.Duration {
+	return &d
 }

@@ -9,18 +9,18 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       {{.url.param1}}
-    timeout: 5
+    timeout: 5s
   - url: GET /cmd/date
     commandTemplate: |
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
-    timeout: 5
+    timeout: 5s
   - url: POST /cmd/echo-text
     commandTemplate: |
       /bin/echo
       -n
       {{.body.text}}
-    timeout: 5
+    timeout: 5s
   - url: POST /cmd/echo-json
     commandTemplate: |
       /bin/echo
@@ -28,7 +28,7 @@ urlCommands:
       {{.body.json}}
     params:
       bodyAsJson: true
-    timeout: 5
+    timeout: 5s
   - url: POST /cmd/forbidden
     authorizationName: auth-name1
     commandTemplate: |
@@ -38,7 +38,7 @@ urlCommands:
     commandTemplate: |
       /bin/sleep
       10
-    timeout: 1
+    timeout: 1s
   - url: GET /cmd/false
     commandTemplate: |
       /usr/bin/false

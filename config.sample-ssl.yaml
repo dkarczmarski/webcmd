@@ -13,18 +13,18 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       {{.url.message}}
-    timeout: 30
+    timeout: 30s
   - url: GET /cmd/date
     commandTemplate: |
       /usr/bin/date
       +%Y-%m-%d %H:%M:%S
-    timeout: 30
+    timeout: 30s
   - url: POST /cmd/echo-text
     commandTemplate: |
       /bin/echo
       -n
       {{.body.text}}
-    timeout: 5
+    timeout: 5s
   - url: POST /cmd/echo-json
     commandTemplate: |
       /bin/echo
@@ -32,24 +32,24 @@ urlCommands:
       {{.body.json.message}}
     params:
       bodyAsJson: true
-    timeout: 5
+    timeout: 5s
   - url: GET /stream/time
     commandTemplate: |
       bash
       -c
       for i in {1..10}; do echo -n "$i "; date '+%H:%M:%S'; sleep 1; done
     outputType: stream
-    timeout: 30
+    timeout: 30s
   - url: GET /stream/time-with-timeout-5
     commandTemplate: |
       bash
       -c
       for i in {1..10}; do echo -n "$i "; date '+%H:%M:%S'; sleep 1; done
     outputType: stream
-    timeout: 5
+    timeout: 5s
   - url: GET /cmd/sleep
     commandTemplate: |
       /bin/sleep
       5
     outputType: none
-    timeout: 10
+    timeout: 10s

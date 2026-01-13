@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
@@ -137,8 +136,8 @@ func TimeoutMiddleware() httpx.Middleware {
 				return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 			}
 
-			if cmd.Timeout > 0 {
-				ctx, cancel := context.WithTimeout(request.Context(), time.Duration(cmd.Timeout)*time.Second)
+			if cmd.Timeout != nil {
+				ctx, cancel := context.WithTimeout(request.Context(), *cmd.Timeout)
 				defer cancel()
 
 				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
