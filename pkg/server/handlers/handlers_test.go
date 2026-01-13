@@ -8,7 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/server/handlers"
@@ -250,6 +252,8 @@ func TestExecutionHandler(t *testing.T) {
 		bodyAsJSON      bool
 		requestBody     string
 		expectedArgs    []string
+		outputType      string
+		timeout         time.Duration
 	}{
 		{
 			name:            "With url parameter",
@@ -275,6 +279,15 @@ func TestExecutionHandler(t *testing.T) {
 			requestBody:     `{"foo": "bar"}`,
 			expectedArgs:    []string{"bar"},
 		},
+		{
+			name:            "Async with timeout",
+			method:          http.MethodGet,
+			url:             "/test",
+			commandTemplate: "echo\nhello",
+			expectedArgs:    []string{"hello"},
+			outputType:      "none",
+			timeout:         time.Hour,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -289,15 +302,28 @@ func TestExecutionHandler(t *testing.T) {
 
 			mockRunner.EXPECT().
 				Command(gomock.Any(), "echo", tc.expectedArgs).
-				Return(mockCommand)
+				DoAndReturn(func(ctx context.Context, _ string, _ ...string) cmdrunner.Command {
+					if tc.outputType == "none" && tc.timeout > 0 {
+						deadline, ok := ctx.Deadline()
+						if !ok {
+							t.Error("expected deadline in async context, but got none")
+						}
+						// Check if deadline is roughly tc.timeout from now
+						if time.Until(deadline) > tc.timeout {
+							t.Errorf("deadline is too far in the future: %v", time.Until(deadline))
+						}
+					}
+
+					return mockCommand
+				})
 
 			mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
 				_, _ = w.Write([]byte("ok"))
-			})
-			mockCommand.EXPECT().SetStderr(gomock.Any())
-			mockCommand.EXPECT().SetSysProcAttr(gomock.Any())
-			mockCommand.EXPECT().Start().Return(nil)
-			mockCommand.EXPECT().Wait().Return(nil)
+			}).AnyTimes()
+			mockCommand.EXPECT().SetStderr(gomock.Any()).AnyTimes()
+			mockCommand.EXPECT().SetSysProcAttr(gomock.Any()).AnyTimes()
+			mockCommand.EXPECT().Start().Return(nil).AnyTimes()
+			mockCommand.EXPECT().Wait().Return(nil).AnyTimes()
 			mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
 
 			handler := handlers.ExecutionHandler(mockRunner)
@@ -309,6 +335,7 @@ func TestExecutionHandler(t *testing.T) {
 					Params: config.ParamsConfig{
 						BodyAsJSON: ptrBool(tc.bodyAsJSON),
 					},
+					OutputType: tc.outputType,
 				},
 			}
 
@@ -319,8 +346,15 @@ func TestExecutionHandler(t *testing.T) {
 
 			req := httptest.NewRequest(tc.method, tc.url, bodyReader)
 			ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmd)
-			req = req.WithContext(ctx)
 
+			if tc.timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, tc.timeout)
+
+				defer cancel()
+			}
+
+			req = req.WithContext(ctx)
 			recorder := httptest.NewRecorder()
 
 			err := handler.ServeHTTP(recorder, req)
@@ -328,7 +362,7 @@ func TestExecutionHandler(t *testing.T) {
 				t.Errorf("ExecutionHandler returned error: %v", err)
 			}
 
-			if recorder.Body.String() != "ok" {
+			if tc.outputType != "none" && recorder.Body.String() != "ok" {
 				t.Errorf("expected 'ok', got %q", recorder.Body.String())
 			}
 		})

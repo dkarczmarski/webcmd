@@ -33,3 +33,9 @@ test-all:
 test-https-local:
 	curl -k -X POST "https://localhost:8443/cmd/echo?message=hello123" \
       -H "X-Api-Key: MYSECRETKEY"
+
+build:
+	go build -o webcmd cmd/main.go
+
+clean:
+	rm -f webcmd

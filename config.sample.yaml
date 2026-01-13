@@ -43,3 +43,9 @@ urlCommands:
       for i in {1..10}; do echo -n "$i "; date '+%H:%M:%S'; sleep 1; done
     outputType: stream
     timeout: 5
+  - url: GET /cmd/sleep
+    commandTemplate: |
+      /bin/sleep
+      5
+    outputType: none
+    timeout: 10
