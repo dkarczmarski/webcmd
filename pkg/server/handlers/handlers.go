@@ -35,8 +35,9 @@ const AuthNameKey contextKey = "authName"
 // URLCommandKey is the context key used to store and retrieve the URL command.
 const URLCommandKey contextKey = "urlCommand"
 
-// APIKeyMiddleware creates a new Middleware that reads X-Api-Key header
-// and finds the matching authorization name.
+// APIKeyMiddleware creates a new Middleware that reads X-Api-Key header,
+// finds the matching authorization name, and adds it to the request context
+// under AuthNameKey.
 func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -66,7 +67,7 @@ func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 }
 
 // URLCommandMiddleware creates a new Middleware that finds the matching URL command
-// and adds it to the request context.
+// and adds it to the request context under URLCommandKey.
 func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -87,6 +88,7 @@ func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
 
 // AuthorizationMiddleware creates a new Middleware that checks if the user is authorized
 // to execute the command based on the information in the request context.
+// It supports multiple authorized names separated by commas in the command configuration.
 func AuthorizationMiddleware() httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -127,7 +129,7 @@ func AuthorizationMiddleware() httpx.Middleware {
 }
 
 // TimeoutMiddleware creates a new Middleware that sets a timeout for the request context
-// based on the configuration in the URLCommand.
+// based on the command configuration.
 func TimeoutMiddleware() httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -149,7 +151,9 @@ func TimeoutMiddleware() httpx.Middleware {
 }
 
 // ExecutionHandler creates a new WebHandler that executes the command
-// associated with the URLCommand found in the request context.
+// associated with the URLCommand found in the request context using the provided runner.
+// It handles command building, output preparation, and execution.
+// If the command fails, it writes the error message to the response.
 //
 //nolint:ireturn
 func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
