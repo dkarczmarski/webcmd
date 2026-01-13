@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.0
+
+### Added
+- Commands are now executed in a separate process group, ensuring that they and all their child processes are terminated together.
+- Added support for asynchronous execution when `outputType` is set to `none`.
+
 ## v0.3.0
 
 ### Added
