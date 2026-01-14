@@ -5,6 +5,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +37,48 @@ const AuthNameKey contextKey = "authName"
 
 // URLCommandKey is the context key used to store and retrieve the URL command.
 const URLCommandKey contextKey = "urlCommand"
+
+// RequestIDKey is the context key used to store and retrieve the request ID.
+const RequestIDKey contextKey = "requestID"
+
+// RequestIDMiddleware creates a new Middleware that extracts the request ID from the X-Request-Id header,
+// or generates a new one if not present, and adds it to the request context under RequestIDKey.
+// It also sets the X-Request-Id header in the response.
+func RequestIDMiddleware() httpx.Middleware {
+	const header = "X-Request-Id"
+
+	return func(next httpx.WebHandler) httpx.WebHandler {
+		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
+			rid := strings.TrimSpace(request.Header.Get(header))
+			if rid == "" {
+				rid = generateRequestID()
+			}
+
+			ctx := context.WithValue(request.Context(), RequestIDKey, rid)
+
+			responseWriter.Header().Set(header, rid)
+
+			return next.ServeHTTP(responseWriter, request.WithContext(ctx))
+		})
+	}
+}
+
+func generateRequestID() string {
+	b := make([]byte, 4) //nolint:mnd
+	_, _ = rand.Read(b)
+
+	return hex.EncodeToString(b)
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(RequestIDKey); v != nil {
+		if rid, ok := v.(string); ok && rid != "" {
+			return rid
+		}
+	}
+
+	return "-"
+}
 
 // APIKeyMiddleware creates a new Middleware that reads X-Api-Key header,
 // finds the matching authorization name, and adds it to the request context
