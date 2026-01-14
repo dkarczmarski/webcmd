@@ -6,7 +6,7 @@
 > **Status: Pre-1.0 (v0.x.x)**
 > The public API is not stable yet and may change between releases.
 
-**webcmd** is a lightweight tool that allows you to execute predefined commands on a host machine via HTTP endpoints.
+**webcmd** is a lightweight tool that allows you to execute predefined commands on a host machine via HTTP/HTTPS endpoints.
 
 It is designed for small projects, CI/CD tasks, and maintenance jobs where you need to trigger a process or command on a remote machine - without giving full SSH access.
 
@@ -18,10 +18,10 @@ In many scenarios (CI/CD pipelines, automation, maintenance):
 
 - You need to run **one specific command** on a remote host.
 - Giving SSH access is **too powerful and risky**.
-- You want a **simple HTTP interface** instead.
+- You want a **simple HTTP/HTTPS interface** instead.
 
 **webcmd** solves this by:
-- Exposing commands via HTTP endpoints.
+- Exposing commands via HTTP/HTTPS endpoints.
 - Allowing optional API key authorization per endpoint.
 - Supporting command parameters from the request.
 
@@ -44,7 +44,9 @@ cp config.sample.yaml config.yaml
 ./webcmd -config config.yaml
 ```
 
-Run a sample command:
+For more examples, check [config.sample.yaml](config.sample.yaml) and [config.sample-ssl.yaml](config.sample-ssl.yaml) (HTTPS).
+
+Test the `POST /cmd/echo` endpoint, which executes the `/bin/echo` command with a message passed as a query parameter. This endpoint requires authorization using an API key:
 
 ```shell
 curl -H "X-Api-Key: MYSECRETKEY" -X POST http://localhost:8080/cmd/echo?message=hello
@@ -54,7 +56,7 @@ curl -H "X-Api-Key: MYSECRETKEY" -X POST http://localhost:8080/cmd/echo?message=
 hello
 ```
 
-Run a sample command:
+Test the `GET /stream/time` endpoint, which streams the output of a bash script that prints the current time every second for 10 seconds. This endpoint also requires an API key for authorization:
 
 ```shell
 curl -H "X-Api-Key: MYSECRETKEY" http://localhost:8080/stream/time
@@ -77,8 +79,8 @@ curl -H "X-Api-Key: MYSECRETKEY" http://localhost:8080/stream/time
 
 #### Basic steps
 
-1. Define the command you want to run. You can create a command template that uses parameters taken from URL query parameters or from the request body. In the command definition, each argument must be placed on a separate line.
-2. Assign it to an HTTP endpoint.
+1. Define the command you want to run. You can create a command template that uses parameters taken from URL query parameters or from the request body or from the http header. In the command definition, each argument must be placed on a separate line.
+2. Assign it to an HTTP/HTTPS endpoint.
 3. (Optional) Protect the endpoint with an API key.
 
 #### Example 1 - Public endpoint (no authorization)
@@ -164,6 +166,7 @@ authorization:
     key: MYSECRETKEY
 urlCommands:
   - url: GET /docker/logs/my-container
+    authorizationName: my-auth-1
     commandTemplate: |
       docker
       logs
@@ -270,7 +273,7 @@ authorization:
 
 ### `urlCommands`
 
-Defines HTTP endpoints and the commands they execute.
+Defines HTTP/HTTPS endpoints and the commands they execute.
 
 Each entry contains:
 
@@ -288,7 +291,7 @@ Each entry contains:
     * Empty lines are ignored.
     * Supports Go `text/template` syntax [https://golang.org/pkg/text/template/](https://golang.org/pkg/text/template/).
 
-  Request data (e.g. query parameters) can be used as placeholders.
+  Request data (e.g. query parameters, HTTP headers, body and JSON body) can be used as placeholders.
 
 * `timeout` *(optional)*
   Timeout for the command execution (e.g., `30s`, `1m`, `1h`). Format: [Go Duration](https://pkg.go.dev/time#ParseDuration).
@@ -369,4 +372,10 @@ urlCommands:
       /bin/echo
       {{.url.message}}
     timeout: 30s
+```
+
+Call the endpoint:
+
+```shell
+curl -H "X-Api-Key: MYSECRETKEY" -X POST http://localhost:8080/cmd/echo?message=hello
 ```
