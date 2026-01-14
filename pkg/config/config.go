@@ -44,10 +44,11 @@ type ParamsConfig struct {
 
 // CommandConfig contains the configuration for a specific command execution.
 type CommandConfig struct {
-	CommandTemplate string         `yaml:"commandTemplate"`
-	Params          ParamsConfig   `yaml:"params"`
-	Timeout         *time.Duration `yaml:"timeout"`
-	OutputType      string         `yaml:"outputType"`
+	CommandTemplate         string         `yaml:"commandTemplate"`
+	Params                  ParamsConfig   `yaml:"params"`
+	Timeout                 *time.Duration `yaml:"timeout"`
+	GraceTerminationTimeout *time.Duration `yaml:"graceTerminationTimeout"`
+	OutputType              string         `yaml:"outputType"`
 }
 
 // URLCommand maps an HTTP request (method and path) to a command configuration.

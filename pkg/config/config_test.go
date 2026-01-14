@@ -217,6 +217,36 @@ func mustLoadConfig(t *testing.T, configPath string) *config.Config {
 	return configuration
 }
 
+func TestGraceTerminationTimeout(t *testing.T) {
+	t.Parallel()
+
+	yamlContent := `
+urlCommands:
+  - url: POST /test
+    commandTemplate: /usr/bin/echo
+    graceTerminationTimeout: 10s
+`
+
+	cfg, err := config.LoadConfigFromString(yamlContent)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if len(cfg.URLCommands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(cfg.URLCommands))
+	}
+
+	graceTimeout := cfg.URLCommands[0].GraceTerminationTimeout
+	if graceTimeout == nil {
+		t.Fatal("expected GraceTerminationTimeout to be set")
+	}
+
+	expected := 10 * time.Second
+	if *graceTimeout != expected {
+		t.Errorf("expected GraceTerminationTimeout %v, got %v", expected, *graceTimeout)
+	}
+}
+
 func ptrBool(b bool) *bool {
 	return &b
 }

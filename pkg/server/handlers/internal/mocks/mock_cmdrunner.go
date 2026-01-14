@@ -10,7 +10,6 @@
 package mocks
 
 import (
-	context "context"
 	io "io"
 	os "os"
 	reflect "reflect"
@@ -45,9 +44,9 @@ func (m *MockRunner) EXPECT() *MockRunnerMockRecorder {
 }
 
 // Command mocks base method.
-func (m *MockRunner) Command(ctx context.Context, name string, arg ...string) cmdrunner.Command {
+func (m *MockRunner) Command(name string, arg ...string) cmdrunner.Command {
 	m.ctrl.T.Helper()
-	varargs := []any{ctx, name}
+	varargs := []any{name}
 	for _, a := range arg {
 		varargs = append(varargs, a)
 	}
@@ -57,9 +56,9 @@ func (m *MockRunner) Command(ctx context.Context, name string, arg ...string) cm
 }
 
 // Command indicates an expected call of Command.
-func (mr *MockRunnerMockRecorder) Command(ctx, name any, arg ...any) *MockRunnerCommandCall {
+func (mr *MockRunnerMockRecorder) Command(name any, arg ...any) *MockRunnerCommandCall {
 	mr.mock.ctrl.T.Helper()
-	varargs := append([]any{ctx, name}, arg...)
+	varargs := append([]any{name}, arg...)
 	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Command", reflect.TypeOf((*MockRunner)(nil).Command), varargs...)
 	return &MockRunnerCommandCall{Call: call}
 }
@@ -76,13 +75,51 @@ func (c *MockRunnerCommandCall) Return(arg0 cmdrunner.Command) *MockRunnerComman
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockRunnerCommandCall) Do(f func(context.Context, string, ...string) cmdrunner.Command) *MockRunnerCommandCall {
+func (c *MockRunnerCommandCall) Do(f func(string, ...string) cmdrunner.Command) *MockRunnerCommandCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockRunnerCommandCall) DoAndReturn(f func(context.Context, string, ...string) cmdrunner.Command) *MockRunnerCommandCall {
+func (c *MockRunnerCommandCall) DoAndReturn(f func(string, ...string) cmdrunner.Command) *MockRunnerCommandCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
+// Kill mocks base method.
+func (m *MockRunner) Kill(pid int, sig syscall.Signal) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Kill", pid, sig)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Kill indicates an expected call of Kill.
+func (mr *MockRunnerMockRecorder) Kill(pid, sig any) *MockRunnerKillCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Kill", reflect.TypeOf((*MockRunner)(nil).Kill), pid, sig)
+	return &MockRunnerKillCall{Call: call}
+}
+
+// MockRunnerKillCall wrap *gomock.Call
+type MockRunnerKillCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockRunnerKillCall) Return(arg0 error) *MockRunnerKillCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockRunnerKillCall) Do(f func(int, syscall.Signal) error) *MockRunnerKillCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockRunnerKillCall) DoAndReturn(f func(int, syscall.Signal) error) *MockRunnerKillCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -109,6 +146,44 @@ func NewMockCommand(ctrl *gomock.Controller) *MockCommand {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockCommand) EXPECT() *MockCommandMockRecorder {
 	return m.recorder
+}
+
+// Pid mocks base method.
+func (m *MockCommand) Pid() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Pid")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// Pid indicates an expected call of Pid.
+func (mr *MockCommandMockRecorder) Pid() *MockCommandPidCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Pid", reflect.TypeOf((*MockCommand)(nil).Pid))
+	return &MockCommandPidCall{Call: call}
+}
+
+// MockCommandPidCall wrap *gomock.Call
+type MockCommandPidCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockCommandPidCall) Return(arg0 int) *MockCommandPidCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockCommandPidCall) Do(f func() int) *MockCommandPidCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockCommandPidCall) DoAndReturn(f func() int) *MockCommandPidCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
 }
 
 // ProcessState mocks base method.

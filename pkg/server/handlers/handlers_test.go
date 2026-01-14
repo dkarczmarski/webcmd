@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
-	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/server/handlers"
@@ -31,7 +31,7 @@ func TestExecutionHandler(t *testing.T) {
 		mockCommand := mocks.NewMockCommand(ctrl)
 
 		mockRunner.EXPECT().
-			Command(gomock.Any(), "echo", []string{"hello"}).
+			Command("echo", []string{"hello"}).
 			Return(mockCommand)
 
 		mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
@@ -82,7 +82,7 @@ func TestExecutionHandler(t *testing.T) {
 		mockCommand := mocks.NewMockCommand(ctrl)
 
 		mockRunner.EXPECT().
-			Command(gomock.Any(), "echo", []string{"X-Test-Value", "X-Test-Value"}).
+			Command("echo", []string{"X-Test-Value", "X-Test-Value"}).
 			Return(mockCommand)
 
 		mockCommand.EXPECT().SetStdout(gomock.Any())
@@ -128,7 +128,7 @@ func TestExecutionHandler(t *testing.T) {
 		mockCommand := mocks.NewMockCommand(ctrl)
 
 		mockRunner.EXPECT().
-			Command(gomock.Any(), "echo", []string{"value1; value2"}).
+			Command("echo", []string{"value1; value2"}).
 			Return(mockCommand)
 
 		mockCommand.EXPECT().SetStdout(gomock.Any())
@@ -193,6 +193,112 @@ func TestExecutionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("GracefulTermination", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
+
+		graceTimeout := 100 * time.Millisecond
+		done := make(chan struct{})
+
+		mockRunner.EXPECT().
+			Command("long-running", gomock.Any()).
+			Return(mockCommand)
+
+		mockCommand.EXPECT().SetStdout(gomock.Any())
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().SetSysProcAttr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(nil)
+		mockCommand.EXPECT().Pid().Return(1234).AnyTimes()
+
+		mockRunner.EXPECT().Kill(1234, syscall.SIGTERM).Return(nil)
+
+		mockRunner.EXPECT().Kill(1234, syscall.SIGKILL).Return(nil)
+
+		mockCommand.EXPECT().Wait().DoAndReturn(func() error {
+			<-done
+
+			return errors.New("signal: killed")
+		})
+		mockCommand.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+		handler := handlers.ExecutionHandler(mockRunner)
+
+		cmd := &config.URLCommand{
+			URL: "GET /long",
+			CommandConfig: config.CommandConfig{
+				CommandTemplate:         "long-running",
+				GraceTerminationTimeout: &graceTimeout,
+			},
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		req := httptest.NewRequest(http.MethodGet, "/long", nil)
+		ctx = context.WithValue(ctx, handlers.URLCommandKey, cmd)
+		req = req.WithContext(ctx)
+
+		recorder := httptest.NewRecorder()
+
+		go func() {
+			_ = handler.ServeHTTP(recorder, req)
+		}()
+
+		// Trigger context cancellation to initiate termination
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+
+		// Wait for more than graceTimeout to ensure SIGKILL is sent
+		time.Sleep(150 * time.Millisecond)
+		close(done)
+	})
+
+	t.Run("CommandStartFailure", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockRunner := mocks.NewMockRunner(ctrl)
+		mockCommand := mocks.NewMockCommand(ctrl)
+
+		mockRunner.EXPECT().
+			Command("invalid", gomock.Any()).
+			Return(mockCommand)
+
+		mockCommand.EXPECT().SetStdout(gomock.Any())
+		mockCommand.EXPECT().SetStderr(gomock.Any())
+		mockCommand.EXPECT().SetSysProcAttr(gomock.Any())
+		mockCommand.EXPECT().Start().Return(errors.New("failed to start"))
+
+		handler := handlers.ExecutionHandler(mockRunner)
+
+		cmd := &config.URLCommand{
+			URL: "GET /invalid",
+			CommandConfig: config.CommandConfig{
+				CommandTemplate: "invalid",
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/invalid", nil)
+		ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmd)
+		req = req.WithContext(ctx)
+
+		recorder := httptest.NewRecorder()
+
+		err := handler.ServeHTTP(recorder, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if !strings.Contains(recorder.Body.String(), "failed to start") {
+			t.Errorf("expected error message 'failed to start' in body, got %q", recorder.Body.String())
+		}
+	})
+
 	t.Run("CommandExecutionFailure", func(t *testing.T) {
 		t.Parallel()
 
@@ -203,7 +309,7 @@ func TestExecutionHandler(t *testing.T) {
 		mockCommand := mocks.NewMockCommand(ctrl)
 
 		mockRunner.EXPECT().
-			Command(gomock.Any(), "exit", []string{"1"}).
+			Command("exit", []string{"1"}).
 			Return(mockCommand)
 
 		mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
@@ -301,21 +407,13 @@ func TestExecutionHandler(t *testing.T) {
 			mockCommand := mocks.NewMockCommand(ctrl)
 
 			mockRunner.EXPECT().
-				Command(gomock.Any(), "echo", tc.expectedArgs).
-				DoAndReturn(func(ctx context.Context, _ string, _ ...string) cmdrunner.Command {
-					if tc.outputType == "none" && tc.timeout > 0 {
-						deadline, ok := ctx.Deadline()
-						if !ok {
-							t.Error("expected deadline in async context, but got none")
-						}
-						// Check if deadline is roughly tc.timeout from now
-						if time.Until(deadline) > tc.timeout {
-							t.Errorf("deadline is too far in the future: %v", time.Until(deadline))
-						}
-					}
+				Command("echo", tc.expectedArgs).
+				Return(mockCommand)
 
-					return mockCommand
-				})
+			if tc.outputType == "none" {
+				mockCommand.EXPECT().Pid().Return(1234).AnyTimes()
+				mockRunner.EXPECT().Kill(1234, syscall.SIGKILL).Return(nil).AnyTimes()
+			}
 
 			mockCommand.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
 				_, _ = w.Write([]byte("ok"))

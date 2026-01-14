@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
@@ -181,7 +182,7 @@ func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
 		}
 
 		exitCode, exitErr := executeCommand(
-			request.Context(), runner, cmdResult.Command, cmdResult.Arguments, writer, async,
+			request.Context(), runner, cmdResult.Command, cmdResult.Arguments, writer, async, cmd.GraceTerminationTimeout,
 		)
 
 		if exitCode != 0 || exitErr != nil {
@@ -329,11 +330,11 @@ func executeCommand(
 	arguments []string,
 	writer io.Writer,
 	async bool,
+	graceTerminationTimeout *time.Duration,
 ) (int, error) {
 	log.Printf("[INFO] Executing command: %s %v", command, arguments)
 
-	cmdCtx, cmdCtxCancel := prepareContext(ctx, async)
-	cmd := runner.Command(cmdCtx, command, arguments...)
+	cmd := runner.Command(command, arguments...)
 
 	//nolint:exhaustruct
 	cmd.SetSysProcAttr(&syscall.SysProcAttr{
@@ -343,61 +344,123 @@ func executeCommand(
 	cmd.SetStderr(writer)
 
 	if err := cmd.Start(); err != nil {
-		if cmdCtxCancel != nil {
-			cmdCtxCancel()
-		}
-
-		return determineExitCodeAndError(cmdCtx, cmd, err)
+		return -1, fmt.Errorf("failed to start command: %w", err)
 	}
 
 	if async {
-		handleAsyncWait(cmdCtx, cmd, command, cmdCtxCancel)
+		handleAsyncWait(ctx, runner, cmd, command, graceTerminationTimeout)
 
-		return determineExitCodeAndError(cmdCtx, cmd, nil)
+		return 0, nil
 	}
+
+	return handleSyncWait(ctx, runner, cmd, command, graceTerminationTimeout)
+}
+
+func handleSyncWait(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	cmd cmdrunner.Command,
+	command string,
+	graceTerminationTimeout *time.Duration,
+) (int, error) {
+	done := make(chan struct{})
+
+	go func() {
+		terminateOnContextDone(ctx, runner, done, cmd, command, graceTerminationTimeout)
+	}()
 
 	err := cmd.Wait()
 
-	if cmdCtxCancel != nil {
-		cmdCtxCancel()
-	}
+	close(done)
 
-	return determineExitCodeAndError(cmdCtx, cmd, err)
+	return determineExitCodeAndError(ctx, cmd, err)
 }
 
-func prepareContext(ctx context.Context, async bool) (context.Context, context.CancelFunc) {
-	if !async {
-		return ctx, nil
-	}
+func handleAsyncWait(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	cmd cmdrunner.Command,
+	command string,
+	graceTerminationTimeout *time.Duration,
+) {
+	done := make(chan struct{})
 
-	if deadline, ok := ctx.Deadline(); ok {
-		return context.WithDeadline(context.WithoutCancel(ctx), deadline)
-	}
-
-	return context.WithoutCancel(ctx), nil
-}
-
-func handleAsyncWait(_ context.Context, cmd cmdrunner.Command, command string, cancel context.CancelFunc) {
 	go func() {
 		log.Printf("[INFO] Asynchronously waiting for command to finish: %s", command)
 
 		waitErr := cmd.Wait()
+
+		close(done)
+
 		if waitErr != nil {
 			log.Printf("[ERROR] Asynchronous command failed: %s, error: %v", command, waitErr)
 		} else {
 			log.Printf("[INFO] Asynchronous command finished successfully: %s", command)
 		}
-
-		if cancel != nil {
-			cancel()
-		}
 	}()
+
+	go func() {
+		terminateOnContextDone(ctx, runner, done, cmd, command, graceTerminationTimeout)
+	}()
+}
+
+func terminateOnContextDone(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	done <-chan struct{},
+	cmd cmdrunner.Command,
+	command string,
+	graceTerminationTimeout *time.Duration,
+) {
+	select {
+	case <-ctx.Done():
+		pid := cmd.Pid()
+
+		if graceTerminationTimeout == nil {
+			log.Printf(
+				"[INFO] Context closed, no grace termination timeout set, sending SIGKILL to process group: %s",
+				command,
+			)
+			signalProcessGroup(runner, pid, syscall.SIGKILL, command)
+
+			return
+		}
+
+		log.Printf("[INFO] Context closed, sending SIGTERM to process group: %s", command)
+		signalProcessGroup(runner, pid, syscall.SIGTERM, command)
+
+		t := time.NewTimer(*graceTerminationTimeout)
+		defer t.Stop()
+
+		select {
+		case <-t.C:
+			log.Printf("[INFO] Process still running after %v, sending SIGKILL to process group: %s",
+				*graceTerminationTimeout, command)
+			signalProcessGroup(runner, pid, syscall.SIGKILL, command)
+		case <-done:
+		}
+
+	case <-done:
+	}
+}
+
+func signalProcessGroup(runner cmdrunner.Runner, pid int, sig syscall.Signal, command string) {
+	if pid <= 0 {
+		log.Printf("[WARN] Cannot send %s to process group: PID is %d for command: %s", sig, pid, command)
+
+		return
+	}
+
+	if err := runner.Kill(pid, sig); err != nil {
+		log.Printf("[ERROR] Failed to send %s to process group %d: %v", sig, -pid, err)
+	}
 }
 
 func determineExitCodeAndError(ctx context.Context, cmd cmdrunner.Command, err error) (int, error) {
 	if err != nil {
 		if isTimeoutOrCanceled(ctx) {
-			//nolint:wrapcheck // error is intentionally forwarded as-is to the client
+			// Timeout or cancellation takes precedence over other errors as this is intentional.
+			//nolint:wrapcheck
 			return -1, ctx.Err()
 		}
 
