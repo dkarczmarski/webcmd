@@ -32,7 +32,7 @@ In many scenarios (CI/CD pipelines, automation, maintenance):
 ```shell
 git clone https://github.com/dkarczmarski/webcmd.git
 cd webcmd
-go build -o webcmd ./cmd
+go build -o webcmd cmd/main.go
 ```
 
 #### Run and test sample commands
@@ -176,7 +176,6 @@ Call the endpoint:
 
 ```shell
 curl -H "X-Api-Key: MYSECRETKEY" \
-     -X POST \
      "http://localhost:8080/docker/logs/my-container"
 ```
 
@@ -279,7 +278,7 @@ Each entry contains:
   HTTP method and path, e.g. `GET /health` or `POST /deploy`.
 
 * `authorizationName` *(optional)*
-  Name of authorization defined in `authorization`.
+  Name of authorization defined in `authorization`. Multiple names can be separated by commas (e.g., `auth1,auth2`).
 
 * `commandTemplate`
   Command template:
@@ -310,7 +309,6 @@ Each entry contains:
       If set to `true`, the HTTP request body will be parsed as JSON and made available in the command template under `{{.body.json}}`.
       - Allows access to individual fields, e.g., `{{.body.json.field_name}}`.
       - Using `{{.body.json}}` without a field will insert the full, valid JSON string.
-      - Requires a valid `Content-Type: application/json` header.
       - Default: `false`.
 
 The HTTP request body is always available as plain text in the command template as `{{.body.text}}`.
@@ -352,7 +350,6 @@ Call the endpoint:
 
 ```shell
 curl -X POST http://localhost:8080/deploy \
-     -H "Content-Type: application/json" \
      -d '{"project_name": "my-app", "version": "1.0.1"}'
 ```
 
