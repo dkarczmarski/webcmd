@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0
+
+### Added
+- Added `RequestIDMiddleware` to track requests with a unique ID (returned in `X-Request-ID` header).
+- Added `graceTerminationTimeout` configuration option for commands to allow graceful shutdown before forceful termination.
+- Support for `time.Duration` format (e.g., `10s`, `1m`) in `timeout` and `graceTerminationTimeout` configuration fields.
+
 ## v0.4.0
 
 ### Added
