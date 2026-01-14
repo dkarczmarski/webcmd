@@ -350,6 +350,37 @@ func TestExecutionHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("InvalidJSONBody", func(t *testing.T) {
+		t.Parallel()
+
+		handler := handlers.ExecutionHandler(nil)
+
+		cmd := &config.URLCommand{
+			URL: "POST /json",
+			CommandConfig: config.CommandConfig{
+				CommandTemplate: "echo\n{{.body.json.foo}}",
+				Params: config.ParamsConfig{
+					BodyAsJSON: ptrBool(true),
+				},
+			},
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/json", strings.NewReader(`{invalid json}`))
+		ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmd)
+		req = req.WithContext(ctx)
+
+		recorder := httptest.NewRecorder()
+
+		err := handler.ServeHTTP(recorder, req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+
+		if !strings.Contains(err.Error(), "failed to parse JSON body") {
+			t.Errorf("expected JSON decoding error, got %v", err)
+		}
+	})
+
 	testCases := []struct {
 		name            string
 		method          string
