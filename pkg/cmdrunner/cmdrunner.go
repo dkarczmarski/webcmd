@@ -3,7 +3,6 @@
 package cmdrunner
 
 import (
-	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -24,11 +23,13 @@ type Command interface {
 	SetStderr(w io.Writer)
 	SetSysProcAttr(attr *syscall.SysProcAttr)
 	ProcessState() *os.ProcessState
+	Pid() int
 }
 
 // Runner interface abstracts the creation and execution of commands.
 type Runner interface {
-	Command(ctx context.Context, name string, arg ...string) Command
+	Command(name string, arg ...string) Command
+	Kill(pid int, sig syscall.Signal) error
 }
 
 type realCommand struct {
@@ -51,12 +52,26 @@ func (c *realCommand) ProcessState() *os.ProcessState {
 	return c.Cmd.ProcessState
 }
 
+func (c *realCommand) Pid() int {
+	if c.Cmd.Process == nil {
+		return 0
+	}
+
+	return c.Cmd.Process.Pid
+}
+
 // RealRunner is a real implementation of the Runner interface.
 type RealRunner struct{}
 
 // Command creates a new Command.
 //
 //nolint:ireturn
-func (r *RealRunner) Command(ctx context.Context, name string, arg ...string) Command {
-	return &realCommand{exec.CommandContext(ctx, name, arg...)}
+func (r *RealRunner) Command(name string, arg ...string) Command {
+	return &realCommand{exec.Command(name, arg...)}
+}
+
+// Kill sends a signal to a process group.
+func (r *RealRunner) Kill(pid int, sig syscall.Signal) error {
+	//nolint:wrapcheck
+	return syscall.Kill(-pid, sig)
 }
