@@ -203,7 +203,8 @@ func TimeoutMiddleware() httpx.Middleware {
 //nolint:ireturn
 func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		log.Printf("[INFO] Executing command for: %s %s", request.Method, request.URL.Path)
+		rid := requestIDFromContext(request.Context())
+		log.Printf("[INFO] rid=%s Executing command for: %s %s", rid, request.Method, request.URL.Path)
 
 		cmd, err := getURLCommandFromContext(request)
 		if err != nil {
@@ -230,11 +231,11 @@ func ExecutionHandler(runner cmdrunner.Runner) httpx.WebHandler {
 		)
 
 		if exitCode != 0 || exitErr != nil {
-			log.Printf("[WARN] Command failed with exit code: %d, error: %v", exitCode, exitErr)
+			log.Printf("[WARN] rid=%s Command failed with exit code: %d, error: %v", rid, exitCode, exitErr)
 
 			errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, exitErr)
 			if _, err := responseWriter.Write([]byte(errorMessage)); err != nil {
-				log.Printf("[ERROR] Failed to write error message: %v", err)
+				log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, err)
 			}
 		}
 
@@ -376,7 +377,8 @@ func executeCommand(
 	async bool,
 	graceTerminationTimeout *time.Duration,
 ) (int, error) {
-	log.Printf("[INFO] Executing command: %s %v", command, arguments)
+	rid := requestIDFromContext(ctx)
+	log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
 
 	cmd := runner.Command(command, arguments...)
 
@@ -392,25 +394,24 @@ func executeCommand(
 	}
 
 	if async {
-		handleAsyncWait(ctx, runner, cmd, command, graceTerminationTimeout)
+		handleAsyncWait(ctx, runner, cmd, graceTerminationTimeout)
 
 		return 0, nil
 	}
 
-	return handleSyncWait(ctx, runner, cmd, command, graceTerminationTimeout)
+	return handleSyncWait(ctx, runner, cmd, graceTerminationTimeout)
 }
 
 func handleSyncWait(
 	ctx context.Context,
 	runner cmdrunner.Runner,
 	cmd cmdrunner.Command,
-	command string,
 	graceTerminationTimeout *time.Duration,
 ) (int, error) {
 	done := make(chan struct{})
 
 	go func() {
-		terminateOnContextDone(ctx, runner, done, cmd, command, graceTerminationTimeout)
+		terminateOnContextDone(ctx, runner, done, cmd, graceTerminationTimeout)
 	}()
 
 	err := cmd.Wait()
@@ -424,27 +425,27 @@ func handleAsyncWait(
 	ctx context.Context,
 	runner cmdrunner.Runner,
 	cmd cmdrunner.Command,
-	command string,
 	graceTerminationTimeout *time.Duration,
 ) {
+	rid := requestIDFromContext(ctx)
 	done := make(chan struct{})
 
 	go func() {
-		log.Printf("[INFO] Asynchronously waiting for command to finish: %s", command)
+		log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
 
 		waitErr := cmd.Wait()
 
 		close(done)
 
 		if waitErr != nil {
-			log.Printf("[ERROR] Asynchronous command failed: %s, error: %v", command, waitErr)
+			log.Printf("[ERROR] rid=%s Asynchronous command failed, error: %v", rid, waitErr)
 		} else {
-			log.Printf("[INFO] Asynchronous command finished successfully: %s", command)
+			log.Printf("[INFO] rid=%s Asynchronous command finished successfully", rid)
 		}
 	}()
 
 	go func() {
-		terminateOnContextDone(ctx, runner, done, cmd, command, graceTerminationTimeout)
+		terminateOnContextDone(ctx, runner, done, cmd, graceTerminationTimeout)
 	}()
 }
 
@@ -453,34 +454,34 @@ func terminateOnContextDone(
 	runner cmdrunner.Runner,
 	done <-chan struct{},
 	cmd cmdrunner.Command,
-	command string,
 	graceTerminationTimeout *time.Duration,
 ) {
+	rid := requestIDFromContext(ctx)
 	select {
 	case <-ctx.Done():
 		pid := cmd.Pid()
 
 		if graceTerminationTimeout == nil {
 			log.Printf(
-				"[INFO] Context closed, no grace termination timeout set, sending SIGKILL to process group: %s",
-				command,
+				"[INFO] rid=%s Context closed, no grace termination timeout set, sending SIGKILL to process group",
+				rid,
 			)
-			signalProcessGroup(runner, pid, syscall.SIGKILL, command)
+			signalProcessGroup(runner, pid, syscall.SIGKILL)
 
 			return
 		}
 
-		log.Printf("[INFO] Context closed, sending SIGTERM to process group: %s", command)
-		signalProcessGroup(runner, pid, syscall.SIGTERM, command)
+		log.Printf("[INFO] rid=%s Context closed, sending SIGTERM to process group", rid)
+		signalProcessGroup(runner, pid, syscall.SIGTERM)
 
 		t := time.NewTimer(*graceTerminationTimeout)
 		defer t.Stop()
 
 		select {
 		case <-t.C:
-			log.Printf("[INFO] Process still running after %v, sending SIGKILL to process group: %s",
-				*graceTerminationTimeout, command)
-			signalProcessGroup(runner, pid, syscall.SIGKILL, command)
+			log.Printf("[INFO] rid=%s Process still running after %v, sending SIGKILL to process group",
+				rid, *graceTerminationTimeout)
+			signalProcessGroup(runner, pid, syscall.SIGKILL)
 		case <-done:
 		}
 
@@ -488,9 +489,9 @@ func terminateOnContextDone(
 	}
 }
 
-func signalProcessGroup(runner cmdrunner.Runner, pid int, sig syscall.Signal, command string) {
+func signalProcessGroup(runner cmdrunner.Runner, pid int, sig syscall.Signal) {
 	if pid <= 0 {
-		log.Printf("[WARN] Cannot send %s to process group: PID is %d for command: %s", sig, pid, command)
+		log.Printf("[WARN] Cannot send %s to process group: PID is %d", sig, pid)
 
 		return
 	}
