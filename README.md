@@ -294,6 +294,9 @@ Each entry contains:
 * `timeout` *(optional)*
   Timeout for the command execution (e.g., `30s`, `1m`, `1h`). Format: [Go Duration](https://pkg.go.dev/time#ParseDuration).
 
+* `graceTerminationTimeout` *(optional)*
+  The time to wait for the process to exit gracefully after sending `SIGTERM` when the context is cancelled (e.g., client disconnects or timeout occurs) before sending `SIGKILL`. Format: [Go Duration](https://pkg.go.dev/time#ParseDuration). Default: no grace period (sends `SIGKILL` immediately).
+
 * `outputType` *(optional)*
   Determines how the command output is returned:
   - `text`: (default) returns the full output once the command finishes.
