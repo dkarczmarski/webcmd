@@ -54,6 +54,7 @@ func New(configuration *config.Config, opts ...func(*Options)) *Server {
 		httpx.ErrorSink(log.Default()),
 		httpx.WithMiddleware(
 			httpx.Chain(
+				handlers.RequestIDMiddleware(),
 				handlers.APIKeyMiddleware(configuration),
 				handlers.URLCommandMiddleware(configuration),
 				handlers.AuthorizationMiddleware(),
