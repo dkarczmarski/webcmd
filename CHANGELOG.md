@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0
+
+### Added
+- Added `shutdownGracePeriod` configuration parameter to control the graceful shutdown time.
+
 ## v0.5.0
 
 ### Added
