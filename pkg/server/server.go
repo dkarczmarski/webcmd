@@ -41,6 +41,7 @@ func (s *Server) Run(ctx context.Context) error {
 		gracehttp.WithAddr(s.cfg.Server.Address),
 		gracehttp.WithHandler(s.router),
 		gracehttp.WithBaseContext(ctx),
+		gracehttp.WithGrace(*s.cfg.Server.ShutdownGracePeriod),
 		gracehttp.WithHTTPServer(func(s *http.Server) {
 			s.ReadHeaderTimeout = readHeaderTimeout
 			s.ReadTimeout = readTimeout
