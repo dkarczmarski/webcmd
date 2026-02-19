@@ -1,4 +1,3 @@
-// Package server provides HTTP server for running commands.
 package server
 
 import (
@@ -8,22 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
-	"github.com/dkarczmarski/webcmd/pkg/httpx"
-	"github.com/dkarczmarski/webcmd/pkg/server/handlers"
+	"github.com/dkarczmarski/webcmd/pkg/gracehttp"
+	"github.com/dkarczmarski/webcmd/pkg/router"
 )
-
-// Server represents the HTTP server instance.
-type Server struct {
-	httpServer    *http.Server
-	configuration *config.Config
-}
-
-// Options defines the configuration options for the Server.
-type Options struct {
-	Addr string
-}
 
 const (
 	readHeaderTimeout = 5 * time.Second
@@ -32,81 +19,43 @@ const (
 	idleTimeout       = 0 // No timeout for streaming
 )
 
-// WithAddr returns an option function that sets the server address.
-func WithAddr(addr string) func(*Options) {
-	return func(o *Options) {
-		o.Addr = addr
-	}
+type Server struct {
+	cfg    *config.Config
+	router http.Handler
 }
 
-// New creates and initializes a new Server instance with the given configuration and options.
-func New(configuration *config.Config, opts ...func(*Options)) *Server {
-	options := Options{
-		Addr: "127.0.0.1:8080",
-	}
-
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/", httpx.ToHandler(
-		httpx.ErrorSink(log.Default()),
-		httpx.WithMiddleware(
-			httpx.Chain(
-				handlers.RequestIDMiddleware(),
-				handlers.APIKeyMiddleware(configuration),
-				handlers.URLCommandMiddleware(configuration),
-				handlers.AuthorizationMiddleware(),
-				handlers.TimeoutMiddleware(),
-			),
-			handlers.ExecutionHandler(&cmdrunner.RealRunner{}),
-		)))
-
-	//nolint:exhaustruct
-	httpServer := &http.Server{
-		Addr:              options.Addr,
-		Handler:           mux,
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-	}
-
+func New(cfg *config.Config) *Server {
 	return &Server{
-		httpServer:    httpServer,
-		configuration: configuration,
+		cfg:    cfg,
+		router: router.New(cfg),
 	}
 }
 
-// ServeHTTP implements the http.Handler interface by delegating to the underlying HTTP server.
-func (s *Server) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
-	s.httpServer.Handler.ServeHTTP(responseWriter, request)
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
 }
 
-// Start begins listening for and serving HTTP requests.
-func (s *Server) Start() error {
-	httpsConfig := s.configuration.Server.HTTPSConfig
-	if httpsConfig.Enabled {
-		certFile := httpsConfig.CertFile
-		keyFile := httpsConfig.KeyFile
-
-		if err := s.httpServer.ListenAndServeTLS(certFile, keyFile); err != nil {
-			return fmt.Errorf("listen and serve TLS: %w", err)
-		}
-	} else {
-		if err := s.httpServer.ListenAndServe(); err != nil {
-			return fmt.Errorf("listen and serve: %w", err)
-		}
+//nolint:contextcheck
+func (s *Server) Run(ctx context.Context) error {
+	srv, err := gracehttp.New(
+		gracehttp.WithAddr(s.cfg.Server.Address),
+		gracehttp.WithHandler(s.router),
+		gracehttp.WithBaseContext(ctx),
+		gracehttp.WithHTTPServer(func(s *http.Server) {
+			s.ReadHeaderTimeout = readHeaderTimeout
+			s.ReadTimeout = readTimeout
+			s.WriteTimeout = writeTimeout
+			s.IdleTimeout = idleTimeout
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("create gracehttp server: %w", err)
 	}
 
-	return nil
-}
+	log.Printf("[INFO] Starting server on %s", s.cfg.Server.Address)
 
-// Shutdown gracefully shuts down the server without interrupting any active connections.
-func (s *Server) Shutdown(ctx context.Context) error {
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		return fmt.Errorf("server shutdown: %w", err)
+	if err := srv.Run(); err != nil {
+		return fmt.Errorf("run server: %w", err)
 	}
 
 	return nil
