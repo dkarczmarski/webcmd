@@ -1,5 +1,6 @@
 server:
 #  address: "127.0.0.1:8443"
+  shutdownGracePeriod: 5s
   https:
     enabled: true
     certFile: ./cert.pem

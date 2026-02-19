@@ -8,6 +8,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	DefaultHTTPAddress         = "127.0.0.1:8080"
+	DefaultHTTPSAddress        = "127.0.0.1:8443"
+	DefaultShutdownGracePeriod = 5 * time.Second
+	DefaultBodyAsJSON          = false
+)
+
 // Config represents the main configuration structure for the application.
 type Config struct {
 	Server        ServerConfig          `yaml:"server"`
@@ -17,8 +24,9 @@ type Config struct {
 
 // ServerConfig holds the server-specific configuration settings.
 type ServerConfig struct {
-	Address     string            `yaml:"address"`
-	HTTPSConfig ServerHTTPSConfig `yaml:"https"`
+	Address             string            `yaml:"address"`
+	ShutdownGracePeriod *time.Duration    `yaml:"shutdownGracePeriod"`
+	HTTPSConfig         ServerHTTPSConfig `yaml:"https"`
 }
 
 // ServerHTTPSConfig contains the configuration for the HTTPS server.
@@ -86,10 +94,15 @@ func LoadConfigFromString(content string) (*Config, error) {
 func SetDefaults(config *Config) {
 	if config.Server.Address == "" {
 		if config.Server.HTTPSConfig.Enabled {
-			config.Server.Address = "127.0.0.1:8443"
+			config.Server.Address = DefaultHTTPSAddress
 		} else {
-			config.Server.Address = "127.0.0.1:8080"
+			config.Server.Address = DefaultHTTPAddress
 		}
+	}
+
+	if config.Server.ShutdownGracePeriod == nil {
+		d := DefaultShutdownGracePeriod
+		config.Server.ShutdownGracePeriod = &d
 	}
 
 	for i := range config.URLCommands {
@@ -104,7 +117,7 @@ func IsTrue(b *bool) bool {
 
 func setBodyAsJSONDefault(params *ParamsConfig) {
 	if params.BodyAsJSON == nil {
-		falseVal := false
-		params.BodyAsJSON = &falseVal
+		val := DefaultBodyAsJSON
+		params.BodyAsJSON = &val
 	}
 }

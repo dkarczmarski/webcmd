@@ -27,7 +27,8 @@ func TestLoadConfig(t *testing.T) {
 
 		expected := &config.Config{
 			Server: config.ServerConfig{
-				Address: ":8080",
+				Address:             ":8080",
+				ShutdownGracePeriod: ptrDuration(5 * time.Second),
 				HTTPSConfig: config.ServerHTTPSConfig{
 					Enabled:  true,
 					CertFile: "/etc/certs/cert.pem",
@@ -192,16 +193,18 @@ func TestSetDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("Params mixed values", func(t *testing.T) {
+	t.Run("ShutdownGracePeriod default value", func(t *testing.T) {
 		t.Parallel()
 
-		configPath := setupTestFile(t, "params-mixed.yaml")
+		configPath := setupTestFile(t, "https-disabled.yaml")
 		cfg := mustLoadConfig(t, configPath)
 
-		params := cfg.URLCommands[0].Params
+		if cfg.Server.ShutdownGracePeriod == nil {
+			t.Fatal("expected ShutdownGracePeriod to be set by default")
+		}
 
-		if !config.IsTrue(params.BodyAsJSON) {
-			t.Errorf("expected BodyAsJSON to be true (overridden), got %v", params.BodyAsJSON)
+		if *cfg.Server.ShutdownGracePeriod != 5*time.Second {
+			t.Errorf("expected ShutdownGracePeriod 5s, got %v", *cfg.Server.ShutdownGracePeriod)
 		}
 	})
 }

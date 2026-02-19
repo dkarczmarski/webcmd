@@ -238,6 +238,8 @@ The `commandTemplate` uses Go's `text/template` syntax to inject data from the H
     * `":8080"`
     * `"localhost:8080"`
 
+* `shutdownGracePeriod` *(optional)* - the time to wait for active requests to finish before the server shuts down (e.g., `5s`, `30s`). Format: [Go Duration](https://pkg.go.dev/time#ParseDuration). Default: `5s`.
+
 * `https` *(optional)* - HTTPS configuration:
     * `enabled` - enable or disable HTTPS. Default: `false`.
     * `certFile` - path to the SSL certificate file.
