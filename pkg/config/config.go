@@ -50,13 +50,20 @@ type ParamsConfig struct {
 	BodyAsJSON *bool `yaml:"bodyAsJson"`
 }
 
+// CallGateConfig contains the configuration for the call gate.
+type CallGateConfig struct {
+	Mode      string `yaml:"mode"`
+	GroupName string `yaml:"groupName"`
+}
+
 // CommandConfig contains the configuration for a specific command execution.
 type CommandConfig struct {
-	CommandTemplate         string         `yaml:"commandTemplate"`
-	Params                  ParamsConfig   `yaml:"params"`
-	Timeout                 *time.Duration `yaml:"timeout"`
-	GraceTerminationTimeout *time.Duration `yaml:"graceTerminationTimeout"`
-	OutputType              string         `yaml:"outputType"`
+	CommandTemplate         string          `yaml:"commandTemplate"`
+	Params                  ParamsConfig    `yaml:"params"`
+	Timeout                 *time.Duration  `yaml:"timeout"`
+	GraceTerminationTimeout *time.Duration  `yaml:"graceTerminationTimeout"`
+	OutputType              string          `yaml:"outputType"`
+	CallGate                *CallGateConfig `yaml:"callGate"`
 }
 
 // URLCommand maps an HTTP request (method and path) to a command configuration.
