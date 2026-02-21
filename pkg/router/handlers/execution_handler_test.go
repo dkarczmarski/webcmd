@@ -1271,7 +1271,7 @@ func TestExecutionHandler_TerminateOnCancel_NoGrace_SendsSIGKILL(t *testing.T) {
 	killed := make(chan struct{})
 
 	mockRunner.EXPECT().
-		Kill(123, syscall.SIGKILL).
+		Kill(-123, syscall.SIGKILL).
 		DoAndReturn(func(_ int, _ syscall.Signal) error {
 			close(killed)
 			close(waitUnblock)
@@ -1345,8 +1345,8 @@ func TestExecutionHandler_TerminateOnCancel_WithGrace_Timeout_SendsSIGTERMThenSI
 	})
 
 	gomock.InOrder(
-		mockRunner.EXPECT().Kill(123, syscall.SIGTERM).Return(nil),
-		mockRunner.EXPECT().Kill(123, syscall.SIGKILL).Return(nil),
+		mockRunner.EXPECT().Kill(-123, syscall.SIGTERM).Return(nil),
+		mockRunner.EXPECT().Kill(-123, syscall.SIGKILL).Return(nil),
 	)
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
@@ -1404,8 +1404,8 @@ func TestExecutionHandler_TerminateOnCancel_WithGrace_ProcessEndsBeforeTimer_Sen
 		return errors.New("wait error")
 	})
 
-	mockRunner.EXPECT().Kill(123, syscall.SIGTERM).Return(nil)
-	mockRunner.EXPECT().Kill(123, syscall.SIGKILL).Times(0)
+	mockRunner.EXPECT().Kill(-123, syscall.SIGTERM).Return(nil)
+	mockRunner.EXPECT().Kill(-123, syscall.SIGKILL).Times(0)
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
 	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)

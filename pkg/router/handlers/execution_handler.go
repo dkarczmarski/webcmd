@@ -400,8 +400,9 @@ func signalProcessGroup(runner cmdrunner.Runner, pid int, sig syscall.Signal) {
 		return
 	}
 
-	if err := runner.Kill(pid, sig); err != nil {
-		log.Printf("[ERROR] Failed to send %s to process group %d: %v", sig, -pid, err)
+	pgid := -pid
+	if err := runner.Kill(pgid, sig); err != nil {
+		log.Printf("[ERROR] Failed to send %s to process group %d: %v", sig, pgid, err)
 	}
 }
 
