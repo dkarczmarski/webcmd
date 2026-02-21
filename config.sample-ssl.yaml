@@ -49,8 +49,21 @@ urlCommands:
     outputType: stream
     timeout: 5s
   - url: GET /cmd/sleep
+    callGate:
+      mode: single
     commandTemplate: |
       /bin/sleep
       5
     outputType: none
     timeout: 10s
+  - url: POST /maintenance/cleanup
+    callGate:
+      mode: sequence
+      groupName: maintenance
+    commandTemplate: |
+      /usr/bin/find
+      /tmp
+      -name
+      "*.tmp"
+      -delete
+    timeout: 1m
