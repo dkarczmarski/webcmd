@@ -250,6 +250,106 @@ urlCommands:
 	}
 }
 
+func TestCallGateConfig(t *testing.T) {
+	t.Parallel()
+
+	yamlConfig := `
+urlCommands:
+  - url: POST /cmd/echo
+    commandTemplate: /bin/echo
+    callGate:
+      mode: single
+      groupName: myGroupName1
+  - url: POST /cmd/seq
+    commandTemplate: /bin/ls
+    callGate:
+      mode: sequence
+      groupName: myGroupName2
+`
+
+	configuration, err := config.LoadConfigFromString(yamlConfig)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if len(configuration.URLCommands) != 2 {
+		t.Fatalf("expected 2 URLCommands, got %d", len(configuration.URLCommands))
+	}
+
+	// First command
+	cmd1 := configuration.URLCommands[0]
+
+	if cmd1.CallGate == nil {
+		t.Fatal("expected CallGate to be not nil for first command")
+	}
+
+	if cmd1.CallGate.Mode != "single" {
+		t.Errorf("expected mode single, got %s", cmd1.CallGate.Mode)
+	}
+
+	if cmd1.CallGate.GroupName == nil || *cmd1.CallGate.GroupName != "myGroupName1" {
+		t.Errorf("expected groupName myGroupName1, got %v", cmd1.CallGate.GroupName)
+	}
+
+	// Second command
+	cmd2 := configuration.URLCommands[1]
+
+	if cmd2.CallGate == nil {
+		t.Fatal("expected CallGate to be not nil for second command")
+	}
+
+	if cmd2.CallGate.Mode != "sequence" {
+		t.Errorf("expected mode sequence, got %s", cmd2.CallGate.Mode)
+	}
+
+	if cmd2.CallGate.GroupName == nil || *cmd2.CallGate.GroupName != "myGroupName2" {
+		t.Errorf("expected groupName myGroupName2, got %v", cmd2.CallGate.GroupName)
+	}
+}
+
+func TestCallGateConfig_OptionalGroupName(t *testing.T) {
+	t.Parallel()
+
+	yamlConfig := `
+urlCommands:
+  - url: POST /cmd/no-group
+    commandTemplate: /bin/echo
+    callGate:
+      mode: single
+  - url: POST /cmd/empty-group
+    commandTemplate: /bin/echo
+    callGate:
+      mode: single
+      groupName: ""
+`
+
+	cfg, err := config.LoadConfigFromString(yamlConfig)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if len(cfg.URLCommands) != 2 {
+		t.Fatalf("expected 2 URLCommands, got %d", len(cfg.URLCommands))
+	}
+
+	// Case 1: missing groupName -> GroupName should be nil
+	cmd1 := cfg.URLCommands[0]
+	if cmd1.CallGate.GroupName != nil {
+		t.Errorf("expected GroupName to be nil for missing value, got %v", *cmd1.CallGate.GroupName)
+	}
+
+	// Case 2: empty groupName -> GroupName should be non-nil and empty string
+	cmd2 := cfg.URLCommands[1]
+
+	if cmd2.CallGate.GroupName == nil {
+		t.Fatal("expected GroupName to be not nil for empty string value")
+	}
+
+	if *cmd2.CallGate.GroupName != "" {
+		t.Errorf("expected GroupName to be empty string, got %q", *cmd2.CallGate.GroupName)
+	}
+}
+
 func ptrBool(b bool) *bool {
 	return &b
 }
