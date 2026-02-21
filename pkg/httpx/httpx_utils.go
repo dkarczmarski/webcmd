@@ -9,17 +9,29 @@ import (
 
 // WebError represents an HTTP error with an associated HTTP status code and an optional public message.
 type WebError struct {
-	err        error
-	httpStatus int
-	message    string
+	err            error
+	httpStatus     int
+	message        string
+	withStackTrace bool
 }
 
 // NewWebError creates a new WebError.
 func NewWebError(err error, status int, message string) *WebError {
 	return &WebError{
-		err:        err,
-		httpStatus: status,
-		message:    message,
+		err:            err,
+		httpStatus:     status,
+		message:        message,
+		withStackTrace: true,
+	}
+}
+
+// NewWebErrorNoStack creates a new WebError without stack trace in logs.
+func NewWebErrorNoStack(err error, status int, message string) *WebError {
+	return &WebError{
+		err:            err,
+		httpStatus:     status,
+		message:        message,
+		withStackTrace: false,
 	}
 }
 
@@ -47,6 +59,9 @@ func (e *WebError) HTTPStatus() int { return e.httpStatus }
 // Message returns the optional public message.
 func (e *WebError) Message() string { return e.message }
 
+// StackTrace returns whether the stack trace should be logged.
+func (e *WebError) StackTrace() bool { return e.withStackTrace }
+
 type statusCoder interface {
 	error
 	HTTPStatus() int
@@ -61,6 +76,10 @@ var (
 	_ statusCoder    = (*WebError)(nil)
 	_ messageCarrier = (*WebError)(nil)
 )
+
+type stackTracer interface {
+	StackTrace() bool
+}
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
 // If logger is nil, log.Default() is used.
@@ -78,6 +97,7 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 
 			status := http.StatusInternalServerError
 			msg := ""
+			withStackTrace := true
 
 			var sc statusCoder
 			if errors.As(err, &sc) {
@@ -88,7 +108,12 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 				}
 			}
 
-			if status >= http.StatusInternalServerError {
+			var st stackTracer
+			if errors.As(err, &st) {
+				withStackTrace = st.StackTrace()
+			}
+
+			if status >= http.StatusInternalServerError && withStackTrace {
 				logger.Printf("[ERROR] %s %s: %v\nStack Trace:\n%s",
 					request.Method, request.URL.Path, err, debug.Stack(),
 				)
