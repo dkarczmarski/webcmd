@@ -6,8 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/config"
@@ -900,5 +903,597 @@ func TestExecutionHandler_PrepareOutput_Unknown(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+}
+
+func TestExecutionHandler_ExecuteCommand_StartError_WritesFailedToStart(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().
+		Command("echo hello").
+		Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+
+	mockCmd.EXPECT().Start().Return(errors.New("start boom"))
+	mockCmd.EXPECT().Wait().Times(0)
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	// runCommand returns nil and only writes the error to the response body, so the status is typically 200.
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d, body=%q", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "failed to start command") {
+		t.Errorf("expected body to contain %q, got %q", "failed to start command", body)
+	}
+}
+
+func TestExecutionHandler_ExecuteCommand_StdoutAndStderr_WriteToSameResponseWriter(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	var (
+		gotStdout io.Writer
+		gotStderr io.Writer
+	)
+
+	mockRunner.EXPECT().
+		Command("echo hello").
+		Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+
+	mockCmd.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
+		gotStdout = w
+		_, _ = w.Write([]byte("OUT\n"))
+	})
+
+	mockCmd.EXPECT().SetStderr(gomock.Any()).Do(func(w io.Writer) {
+		gotStderr = w
+		_, _ = w.Write([]byte("ERR\n"))
+	})
+
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Wait().Return(nil)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if gotStdout == nil || gotStderr == nil {
+		t.Fatalf("expected stdout and stderr writers to be captured, got stdout=%v stderr=%v", gotStdout, gotStderr)
+	}
+
+	// Both should reference the same writer instance.
+	if gotStdout != gotStderr {
+		t.Errorf("expected stdout and stderr to be the same writer, got stdout=%T(%p) stderr=%T(%p)",
+			gotStdout, gotStdout, gotStderr, gotStderr)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "OUT") || !strings.Contains(body, "ERR") {
+		t.Errorf("expected response body to contain both OUT and ERR, got %q", body)
+	}
+}
+
+func TestExecutionHandler_ExecuteCommand_SetsSetpgidTrue(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().
+		Command("echo hello").
+		Return(mockCmd)
+
+	mockCmd.EXPECT().
+		SetSysProcAttr(gomock.Any()).
+		Do(func(attr *syscall.SysProcAttr) {
+			if attr == nil {
+				t.Errorf("expected non-nil SysProcAttr")
+
+				return
+			}
+
+			if attr.Setpgid != true {
+				t.Errorf("expected Setpgid=true, got %v", attr.Setpgid)
+			}
+		})
+
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Wait().Return(nil)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestExecutionHandler_SyncWait_ExitError_NonZeroExit_WritesFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	// Create a real *exec.ExitError to exercise errors.As(..., *exec.ExitError).
+	runErr := exec.Command("sh", "-c", "exit 7").Run()
+
+	var exitErr *exec.ExitError
+	if !errors.As(runErr, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
+	}
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "test-command",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("test-command").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	mockCmd.EXPECT().Wait().Return(exitErr)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "Command failed with exit code: 7") {
+		t.Errorf("expected body to contain exit code 7, got %q", body)
+	}
+}
+
+func TestExecutionHandler_SyncWait_WaitReturnsNonExitError_WritesFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "test-command",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("test-command").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	waitErr := errors.New("wait boom")
+	mockCmd.EXPECT().Wait().Return(waitErr)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+
+	if !strings.Contains(body, "Command failed with exit code: -1") {
+		t.Errorf("expected body to contain exit code -1, got %q", body)
+	}
+
+	if !strings.Contains(body, "wait boom") {
+		t.Errorf("expected body to contain %q, got %q", "wait boom", body)
+	}
+}
+
+func TestExecutionHandler_SyncWait_NoError_ProcessStateNil_DoesNotWriteFailureMessage(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "test-command",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("test-command").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	mockCmd.EXPECT().Wait().Return(nil)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if strings.Contains(rr.Body.String(), "Command failed with exit code:") {
+		t.Errorf("expected no failure message, got %q", rr.Body.String())
+	}
+}
+
+func TestExecutionHandler_TerminateOnCancel_NoGrace_SendsSIGKILL(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate:         "echo hello",
+			OutputType:              "text",
+			GraceTerminationTimeout: nil,
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+
+	waitUnblock := make(chan struct{})
+
+	mockCmd.EXPECT().Wait().DoAndReturn(func() error {
+		<-waitUnblock
+
+		return errors.New("wait error")
+	})
+
+	killed := make(chan struct{})
+
+	mockRunner.EXPECT().
+		Kill(123, syscall.SIGKILL).
+		DoAndReturn(func(_ int, _ syscall.Signal) error {
+			close(killed)
+			close(waitUnblock)
+
+			return nil
+		})
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	cancel() // cancel before handler runs
+
+	req = req.WithContext(context.WithValue(ctx, handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	select {
+	case <-killed:
+	default:
+		t.Fatalf("expected SIGKILL to be sent")
+	}
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if !strings.Contains(rr.Body.String(), "context canceled") {
+		t.Errorf("expected body to contain %q, got %q", "context canceled", rr.Body.String())
+	}
+}
+
+func TestExecutionHandler_TerminateOnCancel_WithGrace_Timeout_SendsSIGTERMThenSIGKILL(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	grace := 10 * time.Millisecond
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate:         "echo hello",
+			OutputType:              "text",
+			GraceTerminationTimeout: &grace,
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	// Block long enough so grace timer fires.
+	mockCmd.EXPECT().Wait().DoAndReturn(func() error {
+		time.Sleep(50 * time.Millisecond)
+
+		return errors.New("wait error")
+	})
+
+	gomock.InOrder(
+		mockRunner.EXPECT().Kill(123, syscall.SIGTERM).Return(nil),
+		mockRunner.EXPECT().Kill(123, syscall.SIGKILL).Return(nil),
+	)
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	cancel()
+
+	req = req.WithContext(context.WithValue(ctx, handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestExecutionHandler_TerminateOnCancel_WithGrace_ProcessEndsBeforeTimer_SendsOnlySIGTERM(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	grace := 100 * time.Millisecond
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate:         "echo hello",
+			OutputType:              "text",
+			GraceTerminationTimeout: &grace,
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	// Finish quickly (before grace expires).
+	mockCmd.EXPECT().Wait().DoAndReturn(func() error {
+		time.Sleep(5 * time.Millisecond)
+
+		return errors.New("wait error")
+	})
+
+	mockRunner.EXPECT().Kill(123, syscall.SIGTERM).Return(nil)
+	mockRunner.EXPECT().Kill(123, syscall.SIGKILL).Times(0)
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	ctx, cancel := context.WithCancel(req.Context())
+
+	cancel()
+
+	req = req.WithContext(context.WithValue(ctx, handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	// Create a real *exec.ExitError with a non-zero exit code.
+	runErr := exec.Command("sh", "-c", "exit 7").Run()
+
+	var exitErr *exec.ExitError
+
+	if !errors.As(runErr, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
+	}
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+
+	// Prevent signalProcessGroup from calling runner.Kill.
+	mockCmd.EXPECT().Pid().Return(0).AnyTimes()
+
+	mockCmd.EXPECT().Wait().Return(exitErr)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+
+	// Deadline already exceeded.
+	ctx, cancel := context.WithDeadline(req.Context(), time.Now().Add(-1*time.Second))
+	defer cancel()
+
+	req = req.WithContext(context.WithValue(ctx, handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+
+	if !strings.Contains(body, "context deadline exceeded") {
+		t.Errorf("expected body to contain %q, got %q", "context deadline exceeded", body)
+	}
+
+	if !strings.Contains(body, "Command failed with exit code: -1") {
+		t.Errorf("expected body to contain exit code -1, got %q", body)
+	}
+
+	// Make sure it did not report the process exit code (7) as primary.
+	if strings.Contains(body, "Command failed with exit code: 7") {
+		t.Errorf("did not expect exit code 7 to be reported, got %q", body)
 	}
 }
