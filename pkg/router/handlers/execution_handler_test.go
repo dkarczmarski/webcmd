@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/router/handlers"
@@ -778,6 +779,96 @@ func TestExecutionHandler_PrepareOutput_None(t *testing.T) {
 
 	if rr.Body.Len() > 0 {
 		t.Errorf("expected empty body for outputType 'none', got %q", rr.Body.String())
+	}
+}
+
+func TestExecutionHandler_CallGate(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	mockRunner.EXPECT().
+		Command("echo hello").
+		Return(mockCmd).
+		AnyTimes()
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStdout(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStderr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().Start().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Wait().Return(nil).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(1234).AnyTimes()
+
+	registry := callgate.NewRegistry(callgate.WithDefaults())
+
+	handler := handlers.ExecutionHandler(mockRunner, registry)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	urlCmd := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			CallGate: &config.CallGateConfig{
+				GroupName: "test-group",
+				Mode:      "single",
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, urlCmd)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status OK, got %v", rr.Code)
+	}
+}
+
+func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	registry := callgate.NewRegistry(callgate.WithDefaults())
+
+	handler := handlers.ExecutionHandler(mockRunner, registry)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	urlCmd := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+			CallGate: &config.CallGateConfig{
+				GroupName: "test-group",
+				Mode:      "invalid-mode",
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, urlCmd))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code == http.StatusOK {
+		t.Fatalf("expected non-200 status for invalid callgate mode, got %d, body=%q", rr.Code, rr.Body.String())
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "callgate registry") {
+		t.Errorf("expected response body to contain %q, got %q", "callgate registry", body)
 	}
 }
 

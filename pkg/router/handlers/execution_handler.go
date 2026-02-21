@@ -94,14 +94,9 @@ func runCommand(
 	)
 
 	if cmd.CallGate != nil && registry != nil {
-		factory, factoryErr := callGateFactory(cmd.CallGate)
-		if factoryErr != nil {
-			return factoryErr
-		}
-
-		gate, gateErr := registry.GetOrCreateWithFactory(cmd.CallGate.GroupName, factory)
+		gate, gateErr := registry.GetOrCreate(cmd.CallGate.GroupName, cmd.CallGate.Mode)
 		if gateErr != nil {
-			return fmt.Errorf("callgate registry: %w", gateErr)
+			return httpx.NewWebError(gateErr, http.StatusInternalServerError, fmt.Sprintf("callgate registry: %v", gateErr))
 		}
 
 		exitCode, err = runWithGate(ctx, action, gate)
@@ -122,21 +117,6 @@ func runCommand(
 	}
 
 	return nil
-}
-
-func callGateFactory(cfg *config.CallGateConfig) (callgate.Factory, error) {
-	switch cfg.Mode {
-	case "single":
-		return func() callgate.CallGate {
-			return callgate.NewSingle()
-		}, nil
-	case "sequence":
-		return func() callgate.CallGate {
-			return callgate.NewSequence()
-		}, nil
-	default:
-		return nil, fmt.Errorf("%w: invalid callgate mode: %s", ErrBadConfiguration, cfg.Mode)
-	}
 }
 
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
