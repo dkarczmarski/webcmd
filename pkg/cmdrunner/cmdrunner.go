@@ -64,7 +64,7 @@ func (c *realCommand) Pid() int {
 type RealRunner struct{}
 
 // Command creates a new Command.
-func (r *RealRunner) Command(name string, arg ...string) Command { //nolint:ireturn
+func (r *RealRunner) Command(name string, arg ...string) Command {
 	return &realCommand{exec.Command(name, arg...)}
 }
 

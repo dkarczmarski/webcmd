@@ -9,6 +9,16 @@ linters:
     - tenv
 
 linters-settings:
+  ireturn:
+    allow:
+      - anon
+      - error
+      - stdlib
+      - Command
+  nolintlint:
+    allow-unused: true
+    require-explanation: false
+    require-specific: true
   lll:
     line-length: 120
   depguard:
