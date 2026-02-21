@@ -94,7 +94,14 @@ func runCommand(
 	)
 
 	if cmd.CallGate != nil && registry != nil {
-		gate, gateErr := registry.GetOrCreate(cmd.CallGate.GroupName, cmd.CallGate.Mode)
+		// Default to the unique endpoint identifier (Verb + Path) if groupName is not explicitly provided.
+		// This ensures that concurrency limits apply per-endpoint by default.
+		groupName := cmd.URL
+		if cmd.CallGate.GroupName != nil {
+			groupName = *cmd.CallGate.GroupName
+		}
+
+		gate, gateErr := registry.GetOrCreate(groupName, cmd.CallGate.Mode)
 		if gateErr != nil {
 			return httpx.NewWebErrorNoStack(
 				gateErr, http.StatusInternalServerError, fmt.Sprintf("callgate registry: %v", gateErr),

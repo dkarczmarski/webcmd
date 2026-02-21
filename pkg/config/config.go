@@ -52,8 +52,8 @@ type ParamsConfig struct {
 
 // CallGateConfig contains the configuration for the call gate.
 type CallGateConfig struct {
-	Mode      string `yaml:"mode"`
-	GroupName string `yaml:"groupName"`
+	Mode      string  `yaml:"mode"`
+	GroupName *string `yaml:"groupName"`
 }
 
 // CommandConfig contains the configuration for a specific command execution.

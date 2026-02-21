@@ -832,7 +832,7 @@ func TestExecutionHandler_CallGate(t *testing.T) {
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
 			CallGate: &config.CallGateConfig{
-				GroupName: "test-group",
+				GroupName: ptrString("test-group"),
 				Mode:      "single",
 			},
 		},
@@ -868,7 +868,7 @@ func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
 			CommandTemplate: "echo hello",
 			OutputType:      "text",
 			CallGate: &config.CallGateConfig{
-				GroupName: "test-group",
+				GroupName: ptrString("test-group"),
 				Mode:      "invalid-mode",
 			},
 		},
@@ -1843,5 +1843,156 @@ func TestExecutionHandler_RunCommand_WriteErrorMessageWriteFails_LogsError(t *te
 		}
 
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func ptrString(s string) *string {
+	return &s
+}
+
+func TestExecutionHandler_CallGate_ImplicitGroupName(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd).Times(1)
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStdout(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStderr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().Start().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Wait().Return(nil).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(1234).AnyTimes()
+
+	registry := callgate.NewRegistry(callgate.WithDefaults())
+
+	handler := handlers.ExecutionHandler(mockRunner, registry)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	// URL 1
+	urlCmd1 := &config.URLCommand{
+		URL: "GET /exec1",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			CallGate: &config.CallGateConfig{
+				GroupName: nil, // Implicitly "GET /exec1"
+				Mode:      "single",
+			},
+		},
+	}
+
+	// URL 2 - same template, different URL, no GroupName -> should have DIFFERENT implicit group names
+	urlCmd2 := &config.URLCommand{
+		URL: "GET /exec2",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			CallGate: &config.CallGateConfig{
+				GroupName: nil, // Implicitly "GET /exec2"
+				Mode:      "single",
+			},
+		},
+	}
+
+	// 1. Run URL 1
+	req1 := httptest.NewRequest(http.MethodGet, "/exec1", nil)
+	req1 = req1.WithContext(context.WithValue(req1.Context(), handlers.URLCommandKey, urlCmd1))
+	rr1 := httptest.NewRecorder()
+
+	// Simulating a long running command for URL 1 would be better, but here we just check if they don't interfere.
+	// Actually, let's use a shared group name to see it blocks, and then use nil to see it doesn't.
+
+	// Test isolation:
+	// We'll use a gate to block URL 1, and see if URL 2 is still allowed.
+
+	gate1, _ := registry.GetOrCreate("GET /exec1", "single")
+	release, _ := gate1.Acquire(t.Context())
+
+	defer release()
+
+	// Now GET /exec1 is busy.
+	h.ServeHTTP(rr1, req1)
+
+	if rr1.Code != http.StatusTooManyRequests {
+		t.Errorf("expected status 429 for /exec1, got %v", rr1.Code)
+	}
+
+	// But GET /exec2 should be FREE because it has a different implicit group name.
+	req2 := httptest.NewRequest(http.MethodGet, "/exec2", nil)
+	req2 = req2.WithContext(context.WithValue(req2.Context(), handlers.URLCommandKey, urlCmd2))
+	rr2 := httptest.NewRecorder()
+	h.ServeHTTP(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Errorf("expected status 200 for /exec2, got %v", rr2.Code)
+	}
+}
+
+func TestExecutionHandler_CallGate_EmptyGroupName(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd).AnyTimes()
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStdout(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().SetStderr(gomock.Any()).AnyTimes()
+	mockCmd.EXPECT().Start().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Wait().Return(nil).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(1234).AnyTimes()
+
+	registry := callgate.NewRegistry(callgate.WithDefaults())
+	handler := handlers.ExecutionHandler(mockRunner, registry)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	// URL 1 with empty groupName
+	urlCmd1 := &config.URLCommand{
+		URL: "GET /exec1",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			CallGate: &config.CallGateConfig{
+				GroupName: ptrString(""),
+				Mode:      "single",
+			},
+		},
+	}
+
+	// URL 2 with empty groupName -> should SHARE the same "" group
+	urlCmd2 := &config.URLCommand{
+		URL: "GET /exec2",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			CallGate: &config.CallGateConfig{
+				GroupName: ptrString(""),
+				Mode:      "single",
+			},
+		},
+	}
+
+	// Block the "" group
+	gate, _ := registry.GetOrCreate("", "single")
+	release, _ := gate.Acquire(t.Context())
+
+	defer release()
+
+	// Both should be blocked
+	for _, cmd := range []*config.URLCommand{urlCmd1, urlCmd2} {
+		req := httptest.NewRequest(http.MethodGet, strings.Split(cmd.URL, " ")[1], nil)
+		req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmd))
+		rr := httptest.NewRecorder()
+
+		h.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusTooManyRequests {
+			t.Errorf("expected status 429 for %s, got %v", cmd.URL, rr.Code)
+		}
 	}
 }
