@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -19,6 +21,19 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/router/handlers/internal/mocks"
 	"go.uber.org/mock/gomock"
 )
+
+type syncedWriter struct {
+	io.Writer
+	mu *sync.Mutex
+}
+
+//nolint:wrapcheck
+func (s *syncedWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.Writer.Write(p)
+}
 
 func TestExecutionHandler_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -1495,5 +1510,338 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 	// Make sure it did not report the process exit code (7) as primary.
 	if strings.Contains(body, "Command failed with exit code: 7") {
 		t.Errorf("did not expect exit code 7 to be reported, got %q", body)
+	}
+}
+
+func TestExecutionHandler_AsyncNone_ReturnsBeforeWait(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "none", // async
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(io.Discard)
+	mockCmd.EXPECT().SetStderr(io.Discard)
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	waitStarted := make(chan struct{})
+	unblockWait := make(chan struct{})
+
+	mockCmd.EXPECT().Wait().DoAndReturn(func() error {
+		close(waitStarted) // signal: goroutine reached Wait()
+		<-unblockWait      // block until test allows it
+
+		return nil
+	})
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(rr, req)
+		close(done)
+	}()
+
+	// Handler should finish quickly without waiting for Wait()
+	select {
+	case <-done:
+		// ok
+	case <-time.After(50 * time.Millisecond):
+		t.Fatalf("handler did not return quickly; it may be waiting for Wait()")
+	}
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if rr.Body.Len() != 0 {
+		t.Errorf("expected empty body for outputType 'none', got %q", rr.Body.String())
+	}
+
+	// Ensure Wait() actually ran in a goroutine
+	select {
+	case <-waitStarted:
+		// ok
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("expected Wait() to be called asynchronously")
+	}
+
+	// cleanup: allow Wait() to finish so gomock expectations can be satisfied
+	close(unblockWait)
+}
+
+//nolint:paralleltest
+func TestExecutionHandler_AsyncNone_WaitError_LogsButDoesNotAffectResponse(t *testing.T) {
+	// Do NOT run in parallel: log.SetOutput is global.
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "none",
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(io.Discard)
+	mockCmd.EXPECT().SetStderr(io.Discard)
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+
+	waitDone := make(chan struct{})
+
+	mockCmd.EXPECT().Wait().DoAndReturn(func() error {
+		defer close(waitDone)
+
+		return errors.New("wait boom")
+	})
+
+	var (
+		buf strings.Builder
+		mu  sync.Mutex
+	)
+
+	origOut := log.Writer()
+
+	log.SetOutput(&syncedWriter{Writer: &buf, mu: &mu})
+	t.Cleanup(func() { log.SetOutput(origOut) })
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if rr.Body.Len() != 0 {
+		t.Errorf("expected empty body, got %q", rr.Body.String())
+	}
+
+	// Wait() returned, but the goroutine may not have logged yet.
+	select {
+	case <-waitDone:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatalf("expected async Wait() to finish")
+	}
+
+	// Poll logs until the error line appears (or timeout).
+	deadline := time.Now().Add(300 * time.Millisecond)
+
+	for {
+		mu.Lock()
+		logs := buf.String()
+		mu.Unlock()
+
+		if strings.Contains(logs, "Asynchronous command failed") && strings.Contains(logs, "wait boom") {
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf(
+				"expected logs to contain %q and %q, got %q",
+				"Asynchronous command failed", "wait boom", logs,
+			)
+		}
+
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	// real *exec.ExitError with exit code 7
+	runErr := exec.Command("sh", "-c", "exit 7").Run()
+
+	var exitErr *exec.ExitError
+
+	if !errors.As(runErr, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
+	}
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
+		// simulate process output written before failure is appended
+		_, _ = w.Write([]byte("PROC_OUT\n"))
+	})
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Wait().Return(exitErr)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+
+	// may be mixed with earlier output; we only assert that the error message is appended somewhere
+	if !strings.Contains(body, "PROC_OUT") {
+		t.Errorf("expected body to contain process output, got %q", body)
+	}
+
+	if !strings.Contains(body, "Command failed with exit code: 7") {
+		t.Errorf("expected body to contain exit code 7 failure message, got %q", body)
+	}
+
+	if !strings.Contains(body, "error:") {
+		t.Errorf("expected body to contain 'error:' part, got %q", body)
+	}
+}
+
+type erroringResponseWriter struct {
+	*httptest.ResponseRecorder
+	writeErr error
+}
+
+func (e *erroringResponseWriter) Write(p []byte) (int, error) {
+	_, _ = e.ResponseRecorder.Write(p)
+
+	return 0, e.writeErr
+}
+
+//nolint:paralleltest
+func TestExecutionHandler_RunCommand_WriteErrorMessageWriteFails_LogsError(t *testing.T) {
+	// Do NOT run in parallel: log.SetOutput is global.
+	ctrl := gomock.NewController(t)
+
+	t.Cleanup(ctrl.Finish)
+
+	mockRunner := mocks.NewMockRunner(ctrl)
+	mockCmd := mocks.NewMockCommand(ctrl)
+
+	// real *exec.ExitError with exit code 7 -> triggers errorMessage write
+	runErr := exec.Command("sh", "-c", "exit 7").Run()
+
+	var exitErr *exec.ExitError
+	if !errors.As(runErr, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
+	}
+
+	cmdCfg := &config.URLCommand{
+		URL: "GET /exec",
+		CommandConfig: config.CommandConfig{
+			CommandTemplate: "echo hello",
+			OutputType:      "text",
+		},
+	}
+
+	mockRunner.EXPECT().Command("echo hello").Return(mockCmd)
+
+	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
+	mockCmd.EXPECT().SetStdout(gomock.Any())
+	mockCmd.EXPECT().SetStderr(gomock.Any())
+	mockCmd.EXPECT().Start().Return(nil)
+	mockCmd.EXPECT().Wait().Return(exitErr)
+	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
+	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
+
+	// capture logs
+	var (
+		buf strings.Builder
+		mu  sync.Mutex
+	)
+
+	origOut := log.Writer()
+
+	log.SetOutput(&syncedWriter{Writer: &buf, mu: &mu})
+	t.Cleanup(func() { log.SetOutput(origOut) })
+
+	handler := handlers.ExecutionHandler(mockRunner, nil)
+	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+
+	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
+	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
+
+	rw := &erroringResponseWriter{
+		ResponseRecorder: httptest.NewRecorder(),
+		writeErr:         errors.New("write failed"),
+	}
+
+	h.ServeHTTP(rw, req)
+
+	// We only care that it logged the failure to write the error message.
+	// Poll a bit because logging happens synchronously here, but polling makes it robust.
+	deadline := time.Now().Add(200 * time.Millisecond)
+
+	for {
+		mu.Lock()
+		logs := buf.String()
+		mu.Unlock()
+
+		if strings.Contains(logs, "Failed to write error message") {
+			if !strings.Contains(logs, "write failed") {
+				t.Fatalf("expected logs to contain %q, got %q", "write failed", logs)
+			}
+
+			break
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("expected logs to contain %q, got %q", "Failed to write error message", logs)
+		}
+
+		time.Sleep(5 * time.Millisecond)
 	}
 }
