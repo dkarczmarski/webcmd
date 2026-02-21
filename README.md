@@ -307,6 +307,16 @@ Each entry contains:
   - `stream`: returns the output in real-time as it is produced by the command.
   - `none`: executes the command asynchronously in the background. The HTTP response is sent immediately after the process starts, and any output is discarded. Note that the optional `timeout` is still respected for background processes.
 
+* `callGate` *(optional)*
+  Controls the concurrency of command execution. It allows you to limit how many instances of a command (or a group of commands) can run simultaneously.
+  - `mode`: specifies the concurrency control strategy:
+    - `single`: only one execution at a time is allowed for the group. If another execution is already running, the request is rejected immediately with a `429 Too Many Requests` error.
+    - `sequence`: only one execution at a time is allowed for the group. If another execution is already running, the request waits (blocks) until the previous one finishes.
+  - `groupName`: *(optional)* an identifier used to group multiple endpoints under the same concurrency control.
+    - If not provided, the `url` of the endpoint (e.g., `GET /my/path`) is used as the default group name, meaning the limit applies only to that specific endpoint.
+    - If provided as an empty string (`groupName: ""`), the endpoint belongs to a shared default group.
+    - If provided as a non-empty string, all endpoints with the same `groupName` share the same concurrency limit.
+
 * `params` *(optional)*
   Optional configuration for request body processing:
 
@@ -381,3 +391,35 @@ Call the endpoint:
 ```shell
 curl -H "X-Api-Key: MYSECRETKEY" -X POST http://localhost:8080/cmd/echo?message=hello
 ```
+
+Example 4 - Using `callGate` to limit concurrent execution:
+
+We want to prevent multiple concurrent database backups from running at the same time.
+
+```yaml
+urlCommands:
+  - url: POST /db/backup
+    callGate:
+      mode: single
+      groupName: db-maintenance
+    commandTemplate: |
+      /usr/local/bin/backup-db.sh
+```
+
+If you call `POST /db/backup` while another backup is already in progress, the server will immediately return `429 Too Many Requests`.
+
+Example 5 - Using `callGate` in `sequence` mode:
+
+If you want tasks to wait for their turn instead of being rejected, use `mode: sequence`.
+
+```yaml
+urlCommands:
+  - url: POST /process/task
+    callGate:
+      mode: sequence
+      groupName: task-queue
+    commandTemplate: |
+      /usr/local/bin/slow-process.sh
+```
+
+In this case, if multiple requests are made, they will be executed one by one in the order they arrived.
