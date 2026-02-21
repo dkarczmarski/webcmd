@@ -99,7 +99,7 @@ func runCommand(
 			return factoryErr
 		}
 
-		gate, gateErr := registry.GetOrCreate(cmd.CallGate.GroupName, factory)
+		gate, gateErr := registry.GetOrCreateWithFactory(cmd.CallGate.GroupName, factory)
 		if gateErr != nil {
 			return fmt.Errorf("callgate registry: %w", gateErr)
 		}

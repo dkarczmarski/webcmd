@@ -35,7 +35,7 @@ func TestRegistry_GetOrCreate_WhenMissingAndFactoryNil_ReturnsErrGroupNotFound(t
 
 	r := callgate.NewRegistry()
 
-	gate, err := r.GetOrCreate("missing", nil)
+	gate, err := r.GetOrCreateWithFactory("missing", nil)
 	if gate != nil {
 		t.Fatalf("expected nil gate, got non-nil")
 	}
@@ -64,18 +64,18 @@ func TestRegistry_GetOrCreate_WhenMissingAndFactoryProvided_CreatesAndStores(t *
 		return factory()
 	}
 
-	gate1, err := r.GetOrCreate("group-a", wrappedFactory)
+	gate1, err := r.GetOrCreateWithFactory("group-a", wrappedFactory)
 	if err != nil {
-		t.Fatalf("GetOrCreate #1 error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory #1 error: %v", err)
 	}
 
 	if gate1 == nil {
 		t.Fatalf("expected non-nil gate")
 	}
 
-	gate2, err := r.GetOrCreate("group-a", nil)
+	gate2, err := r.GetOrCreateWithFactory("group-a", nil)
 	if err != nil {
-		t.Fatalf("GetOrCreate #2 error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory #2 error: %v", err)
 	}
 
 	if gate2 == nil {
@@ -102,9 +102,9 @@ func TestRegistry_GetOrCreate_WhenExists_IgnoresFactory(t *testing.T) {
 		return first
 	}
 
-	gate1, err := r.GetOrCreate("group-b", firstFactory)
+	gate1, err := r.GetOrCreateWithFactory("group-b", firstFactory)
 	if err != nil {
-		t.Fatalf("GetOrCreate #1 error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory #1 error: %v", err)
 	}
 
 	if gate1 == nil {
@@ -119,9 +119,9 @@ func TestRegistry_GetOrCreate_WhenExists_IgnoresFactory(t *testing.T) {
 		return testGate{id: 2}
 	}
 
-	gate2, err := r.GetOrCreate("group-b", shouldNotBeCalled)
+	gate2, err := r.GetOrCreateWithFactory("group-b", shouldNotBeCalled)
 	if err != nil {
-		t.Fatalf("GetOrCreate #2 error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory #2 error: %v", err)
 	}
 
 	if gate2 == nil {
@@ -146,7 +146,7 @@ func TestRegistry_GetOrCreate_WhenFactoryReturnsNil_ReturnsErrFactoryReturnedNil
 		return nil
 	}
 
-	gate, err := r.GetOrCreate("group-nil", factory)
+	gate, err := r.GetOrCreateWithFactory("group-nil", factory)
 	if gate != nil {
 		t.Fatalf("expected nil gate, got non-nil")
 	}
@@ -192,7 +192,7 @@ func TestRegistry_GetOrCreate_ConcurrentSameGroup_FactoryCalledOnce(t *testing.T
 
 			<-start
 
-			g, e := r.GetOrCreate("group-concurrent", factory)
+			g, e := r.GetOrCreateWithFactory("group-concurrent", factory)
 
 			results[i] = g
 			errs[i] = e
@@ -230,14 +230,14 @@ func TestRegistry_GetOrCreate_DifferentGroups_CreateDistinctInstances(t *testing
 
 	factory := newTestGateID()
 
-	gateA, err := r.GetOrCreate("group-a", factory)
+	gateA, err := r.GetOrCreateWithFactory("group-a", factory)
 	if err != nil {
-		t.Fatalf("GetOrCreate group-a error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory group-a error: %v", err)
 	}
 
-	gateB, err := r.GetOrCreate("group-b", factory)
+	gateB, err := r.GetOrCreateWithFactory("group-b", factory)
 	if err != nil {
-		t.Fatalf("GetOrCreate group-b error: %v", err)
+		t.Fatalf("GetOrCreateWithFactory group-b error: %v", err)
 	}
 
 	if gateA == nil || gateB == nil {

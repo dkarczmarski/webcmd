@@ -20,16 +20,16 @@ func NewRegistry() *Registry {
 	return &Registry{m: make(map[string]CallGate)}
 }
 
-// GetOrCreate returns the CallGate associated with the given group.
+// GetOrCreateWithFactory returns the CallGate associated with the given group.
 //
 // If a gate for the group already exists, it is returned.
 //
 // If the group does not exist and factory is provided, a new gate is created
 // using the factory, stored in the registry, and then returned.
 //
-// If the group does not exist and factory is nil, GetOrCreate returns
+// If the group does not exist and factory is nil, GetOrCreateWithFactory returns
 // ErrGroupNotFound.
-func (r *Registry) GetOrCreate(group string, factory Factory) (CallGate, error) { //nolint:ireturn
+func (r *Registry) GetOrCreateWithFactory(group string, factory Factory) (CallGate, error) { //nolint:ireturn
 	r.mu.RLock()
 	if l, ok := r.m[group]; ok {
 		r.mu.RUnlock()
