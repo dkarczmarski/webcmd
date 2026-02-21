@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
@@ -13,6 +14,7 @@ import (
 
 // New creates and initializes a new http.ServeMux instance with the given configuration.
 func New(configuration *config.Config) *http.ServeMux {
+	registry := callgate.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", httpx.ToHandler(
 		httpx.ErrorSink(log.Default()),
@@ -24,7 +26,7 @@ func New(configuration *config.Config) *http.ServeMux {
 				handlers.AuthorizationMiddleware(),
 				handlers.TimeoutMiddleware(),
 			),
-			handlers.ExecutionHandler(&cmdrunner.RealRunner{}),
+			handlers.ExecutionHandler(&cmdrunner.RealRunner{}, registry),
 		)))
 
 	return mux
