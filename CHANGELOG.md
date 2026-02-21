@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.0
+
+### Added
+- Introduced execution concurrency control with `single` and `sequential` modes.
+    - `single` mode: Only one instance of a command (or a group of commands) can run at a time; subsequent requests are rejected.
+    - `sequential` mode: Requests are queued and executed one after another.
+- Added `callGate` configuration to endpoints for fine-grained execution isolation and queuing.
+
 ## v0.6.0
 
 ### Added
