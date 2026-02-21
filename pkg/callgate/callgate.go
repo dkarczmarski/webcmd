@@ -12,6 +12,7 @@ import (
 var (
 	ErrBusy               = errors.New("callgate: busy")
 	ErrFactoryReturnedNil = errors.New("callgate: factory returned nil")
+	ErrBadConfiguration   = errors.New("callgate: bad configuration")
 )
 
 // CallGate controls when a function is allowed to run.

@@ -11,13 +11,36 @@ var ErrGroupNotFound = errors.New("group not found")
 type Factory func() CallGate
 
 type Registry struct {
-	mu sync.RWMutex
-	m  map[string]CallGate
+	mu              sync.RWMutex
+	m               map[string]CallGate
+	factoryProvider FactoryProvider
 }
 
-func NewRegistry() *Registry {
+type RegistryConfig struct {
+	FactoryProvider FactoryProvider
+}
+
+type RegistryOption func(*RegistryConfig)
+
+func WithDefaults() RegistryOption {
+	return func(cfg *RegistryConfig) {
+		if cfg.FactoryProvider == nil {
+			cfg.FactoryProvider = NewDefaultFactoryProvider()
+		}
+	}
+}
+
+func NewRegistry(opts ...RegistryOption) *Registry {
+	cfg := &RegistryConfig{} //nolint:exhaustruct
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	//nolint:exhaustruct
-	return &Registry{m: make(map[string]CallGate)}
+	return &Registry{
+		m:               make(map[string]CallGate),
+		factoryProvider: cfg.FactoryProvider,
+	}
 }
 
 // GetOrCreateWithFactory returns the CallGate associated with the given group.
@@ -57,4 +80,21 @@ func (r *Registry) GetOrCreateWithFactory(group string, factory Factory) (CallGa
 	r.m[group] = gate
 
 	return gate, nil
+}
+
+// GetOrCreate returns the CallGate associated with the given group.
+//
+// It uses the factoryProvider to get a factory for the given name, and then
+// calls GetOrCreateWithFactory to ensure the gate exists.
+func (r *Registry) GetOrCreate(group string, name string) (CallGate, error) { //nolint:ireturn
+	if r.factoryProvider == nil {
+		return nil, fmt.Errorf("%w: factoryProvider is nil", ErrBadConfiguration)
+	}
+
+	factory, err := r.factoryProvider.GetFactory(name)
+	if err != nil {
+		return nil, fmt.Errorf("factory provider: %w", err)
+	}
+
+	return r.GetOrCreateWithFactory(group, factory)
 }

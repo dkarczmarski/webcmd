@@ -14,7 +14,7 @@ import (
 
 // New creates and initializes a new http.ServeMux instance with the given configuration.
 func New(configuration *config.Config) *http.ServeMux {
-	registry := callgate.NewRegistry()
+	registry := callgate.NewRegistry(callgate.WithDefaults())
 	mux := http.NewServeMux()
 	mux.Handle("/", httpx.ToHandler(
 		httpx.ErrorSink(log.Default()),

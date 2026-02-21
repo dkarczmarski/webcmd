@@ -223,28 +223,154 @@ func TestRegistry_GetOrCreate_ConcurrentSameGroup_FactoryCalledOnce(t *testing.T
 	}
 }
 
-func TestRegistry_GetOrCreate_DifferentGroups_CreateDistinctInstances(t *testing.T) {
+func TestRegistry_WithDefaults(t *testing.T) {
 	t.Parallel()
 
-	r := callgate.NewRegistry()
+	r := callgate.NewRegistry(callgate.WithDefaults())
 
-	factory := newTestGateID()
-
-	gateA, err := r.GetOrCreateWithFactory("group-a", factory)
-	if err != nil {
-		t.Fatalf("GetOrCreateWithFactory group-a error: %v", err)
+	if r == nil {
+		t.Fatal("expected non-nil registry")
 	}
+}
 
-	gateB, err := r.GetOrCreateWithFactory("group-b", factory)
-	if err != nil {
-		t.Fatalf("GetOrCreateWithFactory group-b error: %v", err)
-	}
+type mockFactoryProvider struct {
+	getFactoryFn func(name string) (callgate.Factory, error)
+	calledName   string
+	calledCount  int32
+}
 
-	if gateA == nil || gateB == nil {
-		t.Fatalf("expected non-nil gates")
-	}
+func (m *mockFactoryProvider) GetFactory(name string) (callgate.Factory, error) {
+	atomic.AddInt32(&m.calledCount, 1)
+	m.calledName = name
 
-	if gateA == gateB {
-		t.Fatalf("expected different instances for different groups")
+	return m.getFactoryFn(name)
+}
+
+func WithMockProvider(provider callgate.FactoryProvider) callgate.RegistryOption {
+	return func(cfg *callgate.RegistryConfig) {
+		cfg.FactoryProvider = provider
 	}
+}
+
+func TestRegistry_GetOrCreate_Cases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns ErrBadConfiguration when factoryProvider is nil", func(t *testing.T) {
+		t.Parallel()
+
+		r := callgate.NewRegistry() // default has nil provider unless WithDefaults is used
+
+		gate, err := r.GetOrCreate("group", "name")
+		if gate != nil {
+			t.Error("expected nil gate")
+		}
+
+		if !errors.Is(err, callgate.ErrBadConfiguration) {
+			t.Errorf("expected ErrBadConfiguration, got: %v", err)
+		}
+	})
+
+	t.Run("calls factoryProvider with correct name", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockFactoryProvider{
+			getFactoryFn: func(_ string) (callgate.Factory, error) {
+				return nil, callgate.ErrInvalidCallGateMode
+			},
+		}
+
+		r := callgate.NewRegistry(WithMockProvider(mock))
+
+		const testName = "test-name"
+
+		_, _ = r.GetOrCreate("group", testName)
+
+		if mock.calledCount != 1 {
+			t.Errorf("expected provider to be called once, got %d", mock.calledCount)
+		}
+
+		if mock.calledName != testName {
+			t.Errorf("expected provider to be called with %q, got %q", testName, mock.calledName)
+		}
+	})
+
+	t.Run("propagates error from factoryProvider", func(t *testing.T) {
+		t.Parallel()
+
+		expectedErr := errors.New("provider error")
+		mock := &mockFactoryProvider{
+			getFactoryFn: func(_ string) (callgate.Factory, error) {
+				return nil, expectedErr
+			},
+		}
+
+		r := callgate.NewRegistry(WithMockProvider(mock))
+
+		gate, err := r.GetOrCreate("group", "name")
+		if gate != nil {
+			t.Error("expected nil gate")
+		}
+
+		if !errors.Is(err, expectedErr) {
+			t.Errorf("expected error %v, got %v", expectedErr, err)
+		}
+	})
+
+	t.Run("delegates to GetOrCreateWithFactory when factory is returned", func(t *testing.T) {
+		t.Parallel()
+
+		var factoryCalled int32
+
+		myGate := testGate{id: 123}
+		factory := func() callgate.CallGate {
+			atomic.AddInt32(&factoryCalled, 1)
+
+			return myGate
+		}
+
+		mock := &mockFactoryProvider{
+			getFactoryFn: func(_ string) (callgate.Factory, error) {
+				return factory, nil
+			},
+		}
+
+		r := callgate.NewRegistry(WithMockProvider(mock))
+
+		gate, err := r.GetOrCreate("group-x", "name-x")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if gate != myGate {
+			t.Errorf("expected gate %v, got %v", myGate, gate)
+		}
+
+		if atomic.LoadInt32(&factoryCalled) != 1 {
+			t.Errorf("expected factory to be called, got %d", factoryCalled)
+		}
+	})
+
+	t.Run("delegates to GetOrCreateWithFactory even when factory is nil", func(t *testing.T) {
+		t.Parallel()
+
+		dummyNilFactory := func() callgate.CallGate { return nil }
+
+		mock := &mockFactoryProvider{
+			getFactoryFn: func(_ string) (callgate.Factory, error) {
+				return dummyNilFactory, nil
+			},
+		}
+
+		r := callgate.NewRegistry(WithMockProvider(mock))
+
+		// When group doesn't exist and factory returns nil, GetOrCreateWithFactory returns ErrFactoryReturnedNil
+		gate, err := r.GetOrCreate("non-existent-group", "name")
+		if gate != nil {
+			t.Error("expected nil gate")
+		}
+
+		if !errors.Is(err, callgate.ErrFactoryReturnedNil) {
+			t.Errorf("expected ErrFactoryReturnedNil, got %v", err)
+		}
+	})
 }
