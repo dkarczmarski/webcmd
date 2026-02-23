@@ -83,7 +83,8 @@ type stackTracer interface {
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
 // If logger is nil, log.Default() is used.
-func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
+// If withErrorHeader is true, the error message is added to the X-Error-Message HTTP header.
+func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.Handler {
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -95,22 +96,15 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 				return
 			}
 
-			status := http.StatusInternalServerError
-			msg := ""
-			withStackTrace := true
+			status, msg, withStackTrace := extractErrorInfo(err)
 
-			var sc statusCoder
-			if errors.As(err, &sc) {
-				status = sc.HTTPStatus()
-
-				if mc, ok := sc.(messageCarrier); ok {
-					msg = mc.Message()
+			if withErrorHeader {
+				headerMsg := msg
+				if headerMsg == "" {
+					headerMsg = err.Error()
 				}
-			}
 
-			var st stackTracer
-			if errors.As(err, &st) {
-				withStackTrace = st.StackTrace()
+				responseWriter.Header().Set("X-Error-Message", headerMsg)
 			}
 
 			if status >= http.StatusInternalServerError && withStackTrace {
@@ -130,4 +124,28 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 			responseWriter.WriteHeader(status)
 		})
 	}
+}
+
+func extractErrorInfo(err error) (int, string, bool) {
+	status := http.StatusInternalServerError
+	msg := ""
+	withStackTrace := true
+
+	var sc statusCoder
+
+	if errors.As(err, &sc) {
+		status = sc.HTTPStatus()
+
+		if mc, ok := sc.(messageCarrier); ok {
+			msg = mc.Message()
+		}
+	}
+
+	var st stackTracer
+
+	if errors.As(err, &st) {
+		withStackTrace = st.StackTrace()
+	}
+
+	return status, msg, withStackTrace
 }

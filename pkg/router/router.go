@@ -17,7 +17,7 @@ func New(configuration *config.Config) *http.ServeMux {
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 	mux := http.NewServeMux()
 	mux.Handle("/", httpx.ToHandler(
-		httpx.ErrorSink(log.Default()),
+		httpx.ErrorSink(log.Default(), false),
 		httpx.WithMiddleware(
 			httpx.Chain(
 				handlers.RequestIDMiddleware(),
