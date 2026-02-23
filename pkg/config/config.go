@@ -26,6 +26,7 @@ type Config struct {
 type ServerConfig struct {
 	Address             string            `yaml:"address"`
 	ShutdownGracePeriod *time.Duration    `yaml:"shutdownGracePeriod"`
+	WithErrorHeader     bool              `yaml:"withErrorHeader"`
 	HTTPSConfig         ServerHTTPSConfig `yaml:"https"`
 }
 

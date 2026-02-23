@@ -207,6 +207,17 @@ func TestSetDefaults(t *testing.T) {
 			t.Errorf("expected ShutdownGracePeriod 5s, got %v", *cfg.Server.ShutdownGracePeriod)
 		}
 	})
+
+	t.Run("WithErrorHeader default value", func(t *testing.T) {
+		t.Parallel()
+
+		configPath := setupTestFile(t, "https-disabled.yaml")
+		cfg := mustLoadConfig(t, configPath)
+
+		if cfg.Server.WithErrorHeader {
+			t.Error("expected WithErrorHeader to be false by default")
+		}
+	})
 }
 
 func mustLoadConfig(t *testing.T, configPath string) *config.Config {
