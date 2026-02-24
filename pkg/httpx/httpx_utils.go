@@ -4,24 +4,21 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"runtime/debug"
 )
 
 // WebError represents an HTTP error with an associated HTTP status code and an optional public message.
 type WebError struct {
-	err            error
-	httpStatus     int
-	message        string
-	withStackTrace bool
+	err        error
+	httpStatus int
+	message    string
 }
 
 // NewWebError creates a new WebError.
 func NewWebError(err error, status int, message string) *WebError {
 	return &WebError{
-		err:            err,
-		httpStatus:     status,
-		message:        message,
-		withStackTrace: true,
+		err:        err,
+		httpStatus: status,
+		message:    message,
 	}
 }
 
@@ -49,9 +46,6 @@ func (e *WebError) HTTPStatus() int { return e.httpStatus }
 // Message returns the optional public message.
 func (e *WebError) Message() string { return e.message }
 
-// StackTrace returns whether the stack trace should be logged.
-func (e *WebError) StackTrace() bool { return e.withStackTrace }
-
 type statusCoder interface {
 	error
 	HTTPStatus() int
@@ -66,10 +60,6 @@ var (
 	_ statusCoder    = (*WebError)(nil)
 	_ messageCarrier = (*WebError)(nil)
 )
-
-type stackTracer interface {
-	StackTrace() bool
-}
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
 // If logger is nil, log.Default() is used.
@@ -86,7 +76,7 @@ func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.H
 				return
 			}
 
-			status, msg, withStackTrace := extractErrorInfo(err)
+			status, msg := extractErrorInfo(err)
 
 			if withErrorHeader {
 				headerMsg := msg
@@ -97,10 +87,8 @@ func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.H
 				responseWriter.Header().Set("X-Error-Message", headerMsg)
 			}
 
-			if status >= http.StatusInternalServerError && withStackTrace {
-				logger.Printf("[ERROR] %s %s: %v\nStack Trace:\n%s",
-					request.Method, request.URL.Path, err, debug.Stack(),
-				)
+			if status >= http.StatusInternalServerError {
+				logger.Printf("[ERROR] %s %s: %v", request.Method, request.URL.Path, err)
 			} else {
 				logger.Printf("[WARN] %s %s: %v", request.Method, request.URL.Path, err)
 			}
@@ -116,10 +104,9 @@ func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.H
 	}
 }
 
-func extractErrorInfo(err error) (int, string, bool) {
+func extractErrorInfo(err error) (int, string) {
 	status := http.StatusInternalServerError
 	msg := ""
-	withStackTrace := true
 
 	var sc statusCoder
 
@@ -131,11 +118,5 @@ func extractErrorInfo(err error) (int, string, bool) {
 		}
 	}
 
-	var st stackTracer
-
-	if errors.As(err, &st) {
-		withStackTrace = st.StackTrace()
-	}
-
-	return status, msg, withStackTrace
+	return status, msg
 }
