@@ -22,6 +22,8 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 )
 
+var ErrCommandFailed = errors.New("command failed")
+
 // ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
 // request context.
 // It builds the command from the configured template and request parameters, prepares the response output,
@@ -52,19 +54,12 @@ func ExecutionHandler(runner cmdrunner.Runner, registry *callgate.Registry) http
 			return err
 		}
 
-		writer, async, err := prepareOutput(responseWriter, cmd.CommandConfig.OutputType)
-		if err != nil {
-			return err
-		}
-
-		return runCommand(
+		return prepareOutputAndRunCommand(
 			request.Context(),
 			runner,
 			registry,
 			cmd,
 			cmdResult,
-			writer,
-			async,
 			responseWriter,
 		)
 	})
@@ -220,11 +215,20 @@ func executeCommand(
 	return handleSyncWait(ctx, runner, cmd, graceTerminationTimeout)
 }
 
-func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Writer, bool, error) {
+func prepareOutputAndRunCommand(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	registry *callgate.Registry,
+	cmd *config.URLCommand,
+	cmdResult *cmdbuilder.Result,
+	responseWriter http.ResponseWriter,
+) error {
 	var (
 		writer io.Writer
 		async  bool
 	)
+
+	outputType := cmd.CommandConfig.OutputType
 
 	switch outputType {
 	case "none":
@@ -232,7 +236,7 @@ func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Wr
 		async = true
 	case "stream":
 		if _, ok := responseWriter.(http.Flusher); !ok {
-			return nil, false, httpx.NewWebError(
+			return httpx.NewWebError(
 				fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
 				http.StatusInternalServerError,
 				"",
@@ -250,14 +254,23 @@ func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Wr
 
 		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	default:
-		return nil, false, httpx.NewWebError(
+		return httpx.NewWebError(
 			fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType),
 			http.StatusInternalServerError,
 			"",
 		)
 	}
 
-	return writer, async, nil
+	return runCommand(
+		ctx,
+		runner,
+		registry,
+		cmd,
+		cmdResult,
+		writer,
+		async,
+		responseWriter,
+	)
 }
 
 func extractQueryParams(request *http.Request) map[string]string {
