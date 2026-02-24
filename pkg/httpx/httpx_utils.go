@@ -49,16 +49,12 @@ func (e *WebError) Message() string { return e.message }
 type statusCoder interface {
 	error
 	HTTPStatus() int
-}
-
-type messageCarrier interface {
 	Message() string
 }
 
 // Compile-time check.
 var (
-	_ statusCoder    = (*WebError)(nil)
-	_ messageCarrier = (*WebError)(nil)
+	_ statusCoder = (*WebError)(nil)
 )
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
@@ -112,10 +108,7 @@ func extractErrorInfo(err error) (int, string) {
 
 	if errors.As(err, &sc) {
 		status = sc.HTTPStatus()
-
-		if mc, ok := sc.(messageCarrier); ok {
-			msg = mc.Message()
-		}
+		msg = sc.Message()
 	}
 
 	return status, msg

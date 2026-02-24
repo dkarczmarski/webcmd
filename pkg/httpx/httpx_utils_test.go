@@ -9,6 +9,16 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 )
 
+type customStatusError struct {
+	err    error
+	status int
+	msg    string
+}
+
+func (e *customStatusError) Error() string   { return e.err.Error() }
+func (e *customStatusError) HTTPStatus() int { return e.status }
+func (e *customStatusError) Message() string { return e.msg }
+
 func TestErrorSink(t *testing.T) {
 	t.Parallel()
 
@@ -18,34 +28,51 @@ func TestErrorSink(t *testing.T) {
 		withErrorHeader bool
 		expectedHeader  string
 		expectedStatus  int
+		expectedBody    string
 	}{
 		{
-			name:            "No error header, normal error",
+			name:            "No error header, normal error (NOT statusCoder)",
 			err:             errors.New("standard error"),
 			withErrorHeader: false,
 			expectedHeader:  "",
 			expectedStatus:  http.StatusInternalServerError,
+			expectedBody:    "",
 		},
 		{
-			name:            "With error header, normal error",
+			name:            "With error header, normal error (NOT statusCoder)",
 			err:             errors.New("standard error"),
 			withErrorHeader: true,
 			expectedHeader:  "standard error",
 			expectedStatus:  http.StatusInternalServerError,
+			expectedBody:    "",
 		},
 		{
-			name:            "With error header, WebError with message",
+			name:            "With error header, WebError with message (statusCoder)",
 			err:             httpx.NewWebError(errors.New("internal"), http.StatusBadRequest, "public message"),
 			withErrorHeader: true,
 			expectedHeader:  "public message",
 			expectedStatus:  http.StatusBadRequest,
+			expectedBody:    "public message\n",
 		},
 		{
-			name:            "With error header, WebError without message",
+			name:            "With error header, WebError without message (statusCoder)",
 			err:             httpx.NewWebError(errors.New("internal error message"), http.StatusBadRequest, ""),
 			withErrorHeader: true,
 			expectedHeader:  "internal error message",
 			expectedStatus:  http.StatusBadRequest,
+			expectedBody:    "",
+		},
+		{
+			name: "Custom statusCoder implementation",
+			err: &customStatusError{
+				err:    errors.New("custom error"),
+				status: http.StatusTeapot,
+				msg:    "I am a teapot",
+			},
+			withErrorHeader: false,
+			expectedHeader:  "",
+			expectedStatus:  http.StatusTeapot,
+			expectedBody:    "I am a teapot\n",
 		},
 	}
 
@@ -72,6 +99,11 @@ func TestErrorSink(t *testing.T) {
 			gotHeader := w.Header().Get("X-Error-Message")
 			if gotHeader != tt.expectedHeader {
 				t.Errorf("expected header X-Error-Message %q, got %q", tt.expectedHeader, gotHeader)
+			}
+
+			gotBody := w.Body.String()
+			if gotBody != tt.expectedBody {
+				t.Errorf("expected body %q, got %q", tt.expectedBody, gotBody)
 			}
 		})
 	}
