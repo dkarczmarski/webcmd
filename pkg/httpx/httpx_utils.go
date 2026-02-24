@@ -25,16 +25,6 @@ func NewWebError(err error, status int, message string) *WebError {
 	}
 }
 
-// NewWebErrorNoStack creates a new WebError without stack trace in logs.
-func NewWebErrorNoStack(err error, status int, message string) *WebError {
-	return &WebError{
-		err:            err,
-		httpStatus:     status,
-		message:        message,
-		withStackTrace: false,
-	}
-}
-
 func (e *WebError) Error() string {
 	if e == nil {
 		return "<nil>"
