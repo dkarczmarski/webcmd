@@ -64,22 +64,34 @@ func (p *Process) WaitSync(ctx context.Context) (int, error) {
 	return p.determineExitCodeAndError(ctx, err)
 }
 
-func (p *Process) WaitAsync(ctx context.Context) error {
+type Result struct {
+	ExitCode int
+	Err      error
+}
+
+func (p *Process) WaitAsync(ctx context.Context) <-chan Result {
+	resultCh := make(chan Result, 1)
 	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		defer close(resultCh)
+
+		err := p.cmd.Wait()
+
+		exitCode, finalErr := p.determineExitCodeAndError(ctx, err)
+
+		resultCh <- Result{
+			ExitCode: exitCode,
+			Err:      finalErr,
+		}
+	}()
 
 	go func() {
 		p.terminateOnContextDone(ctx, done)
 	}()
 
-	if err := p.cmd.Wait(); err != nil {
-		close(done)
-
-		return fmt.Errorf("command wait: %w", err)
-	}
-
-	close(done)
-
-	return nil
+	return resultCh
 }
 
 func (p *Process) terminateOnContextDone(

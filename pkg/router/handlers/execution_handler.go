@@ -224,10 +224,13 @@ func executeCommand(
 		go func() {
 			log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
 
-			if err := proc.WaitAsync(ctx); err != nil {
-				log.Printf("[ERROR] rid=%s Asynchronous command failed, error: %v", rid, err)
+			result := <-proc.WaitAsync(ctx)
+			if result.Err != nil {
+				log.Printf("[ERROR] rid=%s Asynchronous command failed (exit code: %d), error: %v",
+					rid, result.ExitCode, result.Err)
 			} else {
-				log.Printf("[INFO] rid=%s Asynchronous command finished successfully", rid)
+				log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
+					rid, result.ExitCode)
 			}
 		}()
 
