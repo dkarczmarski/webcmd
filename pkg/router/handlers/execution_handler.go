@@ -249,7 +249,7 @@ func prepareOutputAndRunCommand(
 		return httpx.NewWebError(
 			fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType),
 			http.StatusInternalServerError,
-			"",
+			"unknown output type",
 		)
 	}
 }
@@ -286,7 +286,7 @@ func prepareOutputAndRunStreamCommand(
 		return httpx.NewWebError(
 			fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
 			http.StatusInternalServerError,
-			"",
+			"response writer does not support flushing",
 		)
 	}
 
@@ -377,7 +377,7 @@ func processBodyAsJSON(bodyBytes []byte, params map[string]interface{}) error {
 		return httpx.NewWebError(
 			fmt.Errorf("failed to parse JSON body: %w", err),
 			http.StatusBadRequest,
-			"",
+			"must be a JSON object",
 		)
 	}
 

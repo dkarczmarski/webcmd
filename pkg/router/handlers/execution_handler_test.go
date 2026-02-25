@@ -171,8 +171,9 @@ func TestExecutionHandler_NoCommandInContext(t *testing.T) {
 		t.Errorf("expected status 404, got %d", rr.Code)
 	}
 
-	if !strings.Contains(rr.Body.String(), "Command not found") {
-		t.Errorf("expected body to contain 'Command not found', got %q", rr.Body.String())
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "Command not found") {
+		t.Errorf("expected X-Error-Message to contain 'Command not found', got %q", errMsg)
 	}
 }
 
@@ -304,6 +305,11 @@ func TestExecutionHandler_ExtractParams_BodyReadError(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "read error") {
+		t.Errorf("expected X-Error-Message to contain 'read error', got %q", errMsg)
 	}
 }
 
@@ -438,6 +444,11 @@ func TestExecutionHandler_BodyAsJSON_Invalid(t *testing.T) {
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", rr.Code)
 	}
+
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "must be a JSON object") {
+		t.Errorf("expected X-Error-Message to contain 'must be a JSON object', got %q", errMsg)
+	}
 }
 
 func TestExecutionHandler_BodyAsJSON_NonObject(t *testing.T) {
@@ -484,6 +495,11 @@ func TestExecutionHandler_BodyAsJSON_NonObject(t *testing.T) {
 
 			if rr.Code != http.StatusBadRequest {
 				t.Errorf("%s: expected status 400, got %d", tc.name, rr.Code)
+			}
+
+			errMsg := rr.Header().Get("X-Error-Message")
+			if !strings.Contains(errMsg, "must be a JSON object") {
+				t.Errorf("%s: expected X-Error-Message to contain 'must be a JSON object', got %q", tc.name, errMsg)
 			}
 		})
 	}
@@ -577,6 +593,11 @@ func TestExecutionHandler_BuildCommand_Error(t *testing.T) {
 			// with message wrapped in "error building command"
 			if rr.Code != http.StatusInternalServerError {
 				t.Errorf("%s: expected status 500, got %d", tc.name, rr.Code)
+			}
+
+			errMsg := rr.Header().Get("X-Error-Message")
+			if !strings.Contains(errMsg, "error building command") {
+				t.Errorf("%s: expected X-Error-Message to contain 'error building command', got %q", tc.name, errMsg)
 			}
 		})
 	}
@@ -751,6 +772,11 @@ func TestExecutionHandler_PrepareOutput_Stream_Failure(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
 	}
+
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "response writer does not support flushing") {
+		t.Errorf("expected X-Error-Message to contain 'response writer does not support flushing', got %q", errMsg)
+	}
 }
 
 func TestExecutionHandler_PrepareOutput_None(t *testing.T) {
@@ -884,9 +910,9 @@ func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
 		t.Fatalf("expected non-200 status for invalid callgate mode, got %d, body=%q", rr.Code, rr.Body.String())
 	}
 
-	body := rr.Body.String()
-	if !strings.Contains(body, "callgate registry") {
-		t.Errorf("expected response body to contain %q, got %q", "callgate registry", body)
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "callgate registry") {
+		t.Errorf("expected X-Error-Message to contain %q, got %q", "callgate registry", errMsg)
 	}
 }
 
@@ -918,6 +944,11 @@ func TestExecutionHandler_PrepareOutput_Unknown(t *testing.T) {
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("expected status 500, got %d", rr.Code)
+	}
+
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "unknown output type") {
+		t.Errorf("expected X-Error-Message to contain 'unknown output type', got %q", errMsg)
 	}
 }
 
