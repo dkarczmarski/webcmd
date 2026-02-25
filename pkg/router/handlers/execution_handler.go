@@ -36,33 +36,46 @@ var ErrCommandFailed = errors.New("command failed")
 // response body.
 func ExecutionHandler(runner cmdrunner.Runner, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		rid := requestIDFromContext(request.Context())
-		log.Printf("[INFO] rid=%s Executing command for: %s %s", rid, request.Method, request.URL.Path)
-
-		cmd, err := getURLCommandFromContext(request)
-		if err != nil {
-			return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
-		}
-
-		params, err := extractParams(request, cmd)
-		if err != nil {
-			return err
-		}
-
-		cmdResult, err := buildCommand(cmd.CommandConfig.CommandTemplate, params)
-		if err != nil {
-			return err
-		}
-
-		return prepareOutputAndRunCommand(
-			request.Context(),
-			runner,
-			registry,
-			cmd,
-			cmdResult,
-			responseWriter,
-		)
+		return translateError(executionHandler(responseWriter, request, runner, registry))
 	})
+}
+
+func executionHandler(
+	responseWriter http.ResponseWriter,
+	request *http.Request,
+	runner cmdrunner.Runner,
+	registry *callgate.Registry,
+) error {
+	rid := requestIDFromContext(request.Context())
+	log.Printf("[INFO] rid=%s Executing command for: %s %s", rid, request.Method, request.URL.Path)
+
+	cmd, err := getURLCommandFromContext(request)
+	if err != nil {
+		return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
+	}
+
+	params, err := extractParams(request, cmd)
+	if err != nil {
+		return err
+	}
+
+	cmdResult, err := buildCommand(cmd.CommandConfig.CommandTemplate, params)
+	if err != nil {
+		return err
+	}
+
+	return prepareOutputAndRunCommand(
+		request.Context(),
+		runner,
+		registry,
+		cmd,
+		cmdResult,
+		responseWriter,
+	)
+}
+
+func translateError(err error) error {
+	return err
 }
 
 func runCommand(
