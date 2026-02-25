@@ -111,16 +111,50 @@ func runCommand(
 		rid := requestIDFromContext(ctx)
 		log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
 
-		exit, err := executeCommand(ctx, runner, command, arguments, writer, async, cmd.GraceTerminationTimeout)
+		proc, err := startCommandProcess(runner, command, arguments, writer, cmd.GraceTerminationTimeout)
+		if err != nil {
+			return -1, nil, err
+		}
 
-		//nolint:godox
-		// TODO: Currently we don't have done signaling (because async returns immediately)
-		return exit, nil, err
+		if async {
+			return 0, waitAsyncAndLog(ctx, proc, rid), nil
+		}
+
+		exitCode, err := proc.WaitSync(ctx)
+		if err != nil {
+			return exitCode, nil, fmt.Errorf("process wait failed: %w", err)
+		}
+
+		return exitCode, nil, nil
 	}
 
-	// Default to the unique endpoint identifier (Verb + Path) from cmd.URL if groupName is not explicitly provided.
-	// This ensures that concurrency limits apply per-endpoint by default.
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
+
+	return handleCommandResult(rid, exitCode, err, responseWriter)
+}
+
+func waitAsyncAndLog(ctx context.Context, proc *processrunner.Process, rid string) <-chan struct{} {
+	resCh := proc.WaitAsync(ctx)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		result := <-resCh
+		if result.Err != nil {
+			log.Printf("[ERROR] rid=%s Asynchronous command failed (exit code: %d), error: %v",
+				rid, result.ExitCode, result.Err)
+		} else {
+			log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
+				rid, result.ExitCode)
+		}
+	}()
+
+	return done
+}
+
+func handleCommandResult(rid string, exitCode int, err error, responseWriter http.ResponseWriter) error {
 	if err != nil {
 		if errors.Is(err, callgate.ErrBusy) || errors.Is(err, gateexec.ErrRegistry) || errors.Is(err, gateexec.ErrAcquire) {
 			return translateError(err)
@@ -128,10 +162,7 @@ func runCommand(
 
 		log.Printf("[WARN] rid=%s Command failed with exit code: %d, error: %v", rid, exitCode, err)
 
-		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err)
-		if _, writeErr := responseWriter.Write([]byte(errorMessage)); writeErr != nil {
-			log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
-		}
+		writeErrorMessage(rid, responseWriter, fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err))
 
 		return nil
 	}
@@ -139,13 +170,31 @@ func runCommand(
 	if exitCode != 0 {
 		log.Printf("[WARN] rid=%s Command failed with exit code: %d", rid, exitCode)
 
-		errorMessage := fmt.Sprintf("Command failed with exit code: %d", exitCode)
-		if _, writeErr := responseWriter.Write([]byte(errorMessage)); writeErr != nil {
-			log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
-		}
+		writeErrorMessage(rid, responseWriter, fmt.Sprintf("Command failed with exit code: %d", exitCode))
 	}
 
 	return nil
+}
+
+func writeErrorMessage(rid string, responseWriter http.ResponseWriter, message string) {
+	if _, writeErr := responseWriter.Write([]byte(message)); writeErr != nil {
+		log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
+	}
+}
+
+func startCommandProcess(
+	runner cmdrunner.Runner,
+	command string,
+	arguments []string,
+	writer io.Writer,
+	graceTerminationTimeout *time.Duration,
+) (*processrunner.Process, error) {
+	proc, err := processrunner.StartProcess(runner, command, arguments, writer, graceTerminationTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start process: %w", err)
+	}
+
+	return proc, nil
 }
 
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
@@ -204,47 +253,6 @@ func buildCommand(
 	}
 
 	return &cmdResult, nil
-}
-
-func executeCommand(
-	ctx context.Context,
-	runner cmdrunner.Runner,
-	command string,
-	arguments []string,
-	writer io.Writer,
-	async bool,
-	graceTerminationTimeout *time.Duration,
-) (int, error) {
-	proc, err := processrunner.StartProcess(runner, command, arguments, writer, graceTerminationTimeout)
-	if err != nil {
-		return -1, fmt.Errorf("failed to start process: %w", err)
-	}
-
-	if async {
-		rid := requestIDFromContext(ctx)
-
-		go func() {
-			log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
-
-			result := <-proc.WaitAsync(ctx)
-			if result.Err != nil {
-				log.Printf("[ERROR] rid=%s Asynchronous command failed (exit code: %d), error: %v",
-					rid, result.ExitCode, result.Err)
-			} else {
-				log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
-					rid, result.ExitCode)
-			}
-		}()
-
-		return 0, nil
-	}
-
-	exitCode, err := proc.WaitSync(ctx)
-	if err != nil {
-		return exitCode, fmt.Errorf("process wait failed: %w", err)
-	}
-
-	return exitCode, nil
 }
 
 func prepareOutputAndRunCommand(
