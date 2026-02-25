@@ -70,7 +70,7 @@ func TestExecutionHandler_HappyPath(t *testing.T) {
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
 	// We need to use ErrorSink to get the 200 status code and handle errors
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/exec?name=test-name", strings.NewReader("test-body"))
 	req.Header.Set("X-Test", "test-header")
@@ -130,7 +130,7 @@ func TestExecutionHandler_EmptyBody(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// Body is empty
 	req := httptest.NewRequest(http.MethodPost, "/exec", nil)
@@ -159,7 +159,7 @@ func TestExecutionHandler_NoCommandInContext(t *testing.T) {
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
 	// Using ErrorSink to translate WebError to HTTP status code
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// No URLCommand in context
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
@@ -206,7 +206,7 @@ func TestExecutionHandler_ExtractParams_Query(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// URL with multiple values for parameter 'a'
 	req := httptest.NewRequest(http.MethodGet, "/exec?a=1&a=2", nil)
@@ -253,7 +253,7 @@ func TestExecutionHandler_ExtractParams_Headers(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req.Header.Add("X-Test-Header", "a")
@@ -293,7 +293,7 @@ func TestExecutionHandler_ExtractParams_BodyReadError(t *testing.T) {
 	}
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", &errorReader{})
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -342,7 +342,7 @@ func TestExecutionHandler_BodyAsJSON_Disabled(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{"a": 1}`))
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -391,7 +391,7 @@ func TestExecutionHandler_BodyAsJSON_Valid(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{"a": 1}`))
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -425,7 +425,7 @@ func TestExecutionHandler_BodyAsJSON_Invalid(t *testing.T) {
 	}
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// Invalid JSON body
 	req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{invalid json}`))
@@ -473,7 +473,7 @@ func TestExecutionHandler_BodyAsJSON_NonObject(t *testing.T) {
 			t.Parallel()
 
 			handler := handlers.ExecutionHandler(mockRunner, nil)
-			h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+			h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 			req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(tc.body))
 			ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -519,7 +519,7 @@ func TestExecutionHandler_BuildCommand_Success(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec?name=test", nil)
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -564,7 +564,7 @@ func TestExecutionHandler_BuildCommand_Error(t *testing.T) {
 			}
 
 			handler := handlers.ExecutionHandler(mockRunner, nil)
-			h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+			h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 			req := httptest.NewRequest(http.MethodGet, tc.url, nil)
 			ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -621,7 +621,7 @@ func TestExecutionHandler_PrepareOutput_Text(t *testing.T) {
 			mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 			handler := handlers.ExecutionHandler(mockRunner, nil)
-			h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+			h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 			req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 			ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -680,7 +680,7 @@ func TestExecutionHandler_PrepareOutput_Stream_Success(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -734,7 +734,7 @@ func TestExecutionHandler_PrepareOutput_Stream_Failure(t *testing.T) {
 	}
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -782,7 +782,7 @@ func TestExecutionHandler_PrepareOutput_None(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -825,7 +825,7 @@ func TestExecutionHandler_CallGate(t *testing.T) {
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 
 	handler := handlers.ExecutionHandler(mockRunner, registry)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	urlCmd := &config.URLCommand{
 		URL: "GET /exec",
@@ -860,7 +860,7 @@ func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 
 	handler := handlers.ExecutionHandler(mockRunner, registry)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	urlCmd := &config.URLCommand{
 		URL: "GET /exec",
@@ -907,7 +907,7 @@ func TestExecutionHandler_PrepareOutput_Unknown(t *testing.T) {
 	}
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx := context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg)
@@ -950,7 +950,7 @@ func TestExecutionHandler_ExecuteCommand_StartError_WritesFailedToStart(t *testi
 	mockCmd.EXPECT().Wait().Times(0)
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1013,7 +1013,7 @@ func TestExecutionHandler_ExecuteCommand_StdoutAndStderr_WriteToSameResponseWrit
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1084,7 +1084,7 @@ func TestExecutionHandler_ExecuteCommand_SetsSetpgidTrue(t *testing.T) {
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1133,7 +1133,7 @@ func TestExecutionHandler_SyncWait_ExitError_NonZeroExit_WritesFailureMessage(t 
 	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1180,7 +1180,7 @@ func TestExecutionHandler_SyncWait_WaitReturnsNonExitError_WritesFailureMessage(
 	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1231,7 +1231,7 @@ func TestExecutionHandler_SyncWait_NoError_ProcessStateNil_DoesNotWriteFailureMe
 	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1295,7 +1295,7 @@ func TestExecutionHandler_TerminateOnCancel_NoGrace_SendsSIGKILL(t *testing.T) {
 		})
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx, cancel := context.WithCancel(req.Context())
@@ -1365,7 +1365,7 @@ func TestExecutionHandler_TerminateOnCancel_WithGrace_Timeout_SendsSIGTERMThenSI
 	)
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx, cancel := context.WithCancel(req.Context())
@@ -1423,7 +1423,7 @@ func TestExecutionHandler_TerminateOnCancel_WithGrace_ProcessEndsBeforeTimer_Sen
 	mockRunner.EXPECT().Kill(-123, syscall.SIGKILL).Times(0)
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	ctx, cancel := context.WithCancel(req.Context())
@@ -1480,7 +1480,7 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 
@@ -1550,7 +1550,7 @@ func TestExecutionHandler_AsyncNone_ReturnsBeforeWait(t *testing.T) {
 	})
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1636,7 +1636,7 @@ func TestExecutionHandler_AsyncNone_WaitError_LogsButDoesNotAffectResponse(t *te
 	t.Cleanup(func() { log.SetOutput(origOut) })
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1722,7 +1722,7 @@ func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *
 	mockCmd.EXPECT().Pid().Return(123).AnyTimes()
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1809,7 +1809,7 @@ func TestExecutionHandler_RunCommand_WriteErrorMessageWriteFails_LogsError(t *te
 	t.Cleanup(func() { log.SetOutput(origOut) })
 
 	handler := handlers.ExecutionHandler(mockRunner, nil)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
 	req = req.WithContext(context.WithValue(req.Context(), handlers.URLCommandKey, cmdCfg))
@@ -1871,7 +1871,7 @@ func TestExecutionHandler_CallGate_ImplicitGroupName(t *testing.T) {
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 
 	handler := handlers.ExecutionHandler(mockRunner, registry)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// URL 1
 	urlCmd1 := &config.URLCommand{
@@ -1951,7 +1951,7 @@ func TestExecutionHandler_CallGate_EmptyGroupName(t *testing.T) {
 
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 	handler := handlers.ExecutionHandler(mockRunner, registry)
-	h := httpx.ToHandler(httpx.ErrorSink(nil), handler)
+	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	// URL 1 with empty groupName
 	urlCmd1 := &config.URLCommand{

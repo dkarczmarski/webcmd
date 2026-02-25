@@ -4,34 +4,21 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"runtime/debug"
 )
 
 // WebError represents an HTTP error with an associated HTTP status code and an optional public message.
 type WebError struct {
-	err            error
-	httpStatus     int
-	message        string
-	withStackTrace bool
+	err        error
+	httpStatus int
+	message    string
 }
 
 // NewWebError creates a new WebError.
 func NewWebError(err error, status int, message string) *WebError {
 	return &WebError{
-		err:            err,
-		httpStatus:     status,
-		message:        message,
-		withStackTrace: true,
-	}
-}
-
-// NewWebErrorNoStack creates a new WebError without stack trace in logs.
-func NewWebErrorNoStack(err error, status int, message string) *WebError {
-	return &WebError{
-		err:            err,
-		httpStatus:     status,
-		message:        message,
-		withStackTrace: false,
+		err:        err,
+		httpStatus: status,
+		message:    message,
 	}
 }
 
@@ -59,31 +46,48 @@ func (e *WebError) HTTPStatus() int { return e.httpStatus }
 // Message returns the optional public message.
 func (e *WebError) Message() string { return e.message }
 
-// StackTrace returns whether the stack trace should be logged.
-func (e *WebError) StackTrace() bool { return e.withStackTrace }
-
 type statusCoder interface {
 	error
 	HTTPStatus() int
-}
-
-type messageCarrier interface {
 	Message() string
 }
 
+type silentError interface {
+	error
+	Silent() bool
+}
+
+type SilentError struct {
+	err error
+}
+
+func NewSilentError(err error) *SilentError {
+	return &SilentError{err: err}
+}
+
+func (e *SilentError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
+
+	return "silent error"
+}
+
+func (e *SilentError) Unwrap() error { return e.err }
+
+func (e *SilentError) Silent() bool { return true }
+
 // Compile-time check.
 var (
-	_ statusCoder    = (*WebError)(nil)
-	_ messageCarrier = (*WebError)(nil)
+	_ statusCoder = (*WebError)(nil)
+	_ silentError = (*SilentError)(nil)
 )
-
-type stackTracer interface {
-	StackTrace() bool
-}
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
 // If logger is nil, log.Default() is used.
-func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
+// If withErrorHeader is true, the error message is added to the X-Error-Message HTTP header.
+// If the error implements silentError and Silent() returns true, it is completely ignored.
+func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.Handler {
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -95,28 +99,24 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 				return
 			}
 
-			status := http.StatusInternalServerError
-			msg := ""
-			withStackTrace := true
+			var se silentError
+			if errors.As(err, &se) && se.Silent() {
+				return
+			}
 
-			var sc statusCoder
-			if errors.As(err, &sc) {
-				status = sc.HTTPStatus()
+			status, msg := extractErrorInfo(err)
 
-				if mc, ok := sc.(messageCarrier); ok {
-					msg = mc.Message()
+			if withErrorHeader {
+				headerMsg := msg
+				if headerMsg == "" {
+					headerMsg = err.Error()
 				}
+
+				responseWriter.Header().Set("X-Error-Message", headerMsg)
 			}
 
-			var st stackTracer
-			if errors.As(err, &st) {
-				withStackTrace = st.StackTrace()
-			}
-
-			if status >= http.StatusInternalServerError && withStackTrace {
-				logger.Printf("[ERROR] %s %s: %v\nStack Trace:\n%s",
-					request.Method, request.URL.Path, err, debug.Stack(),
-				)
+			if status >= http.StatusInternalServerError {
+				logger.Printf("[ERROR] %s %s: %v", request.Method, request.URL.Path, err)
 			} else {
 				logger.Printf("[WARN] %s %s: %v", request.Method, request.URL.Path, err)
 			}
@@ -130,4 +130,18 @@ func ErrorSink(logger *log.Logger) func(WebHandler) http.Handler {
 			responseWriter.WriteHeader(status)
 		})
 	}
+}
+
+func extractErrorInfo(err error) (int, string) {
+	status := http.StatusInternalServerError
+	msg := ""
+
+	var sc statusCoder
+
+	if errors.As(err, &sc) {
+		status = sc.HTTPStatus()
+		msg = sc.Message()
+	}
+
+	return status, msg
 }

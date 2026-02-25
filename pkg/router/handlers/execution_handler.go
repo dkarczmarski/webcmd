@@ -103,7 +103,7 @@ func runCommand(
 
 		gate, gateErr := registry.GetOrCreate(groupName, cmd.CallGate.Mode)
 		if gateErr != nil {
-			return httpx.NewWebErrorNoStack(
+			return httpx.NewWebError(
 				gateErr, http.StatusInternalServerError, fmt.Sprintf("callgate registry: %v", gateErr),
 			)
 		}
@@ -152,7 +152,7 @@ func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]in
 
 	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
-		return nil, httpx.NewWebErrorNoStack(
+		return nil, httpx.NewWebError(
 			fmt.Errorf("failed to read request body: %w", err),
 			http.StatusInternalServerError,
 			"",
@@ -176,7 +176,7 @@ func buildCommand(
 ) (*cmdbuilder.Result, error) {
 	cmdResult, err := cmdbuilder.BuildCommand(template, params)
 	if err != nil {
-		return nil, httpx.NewWebErrorNoStack(
+		return nil, httpx.NewWebError(
 			fmt.Errorf("error building command: %w", err),
 			http.StatusInternalServerError,
 			"",
@@ -232,7 +232,7 @@ func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Wr
 		async = true
 	case "stream":
 		if _, ok := responseWriter.(http.Flusher); !ok {
-			return nil, false, httpx.NewWebErrorNoStack(
+			return nil, false, httpx.NewWebError(
 				fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
 				http.StatusInternalServerError,
 				"",
@@ -250,7 +250,7 @@ func prepareOutput(responseWriter http.ResponseWriter, outputType string) (io.Wr
 
 		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	default:
-		return nil, false, httpx.NewWebErrorNoStack(
+		return nil, false, httpx.NewWebError(
 			fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType),
 			http.StatusInternalServerError,
 			"",
