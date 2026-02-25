@@ -1,3 +1,6 @@
+// Package processrunner provides process lifecycle management:
+// start process in its own process group, wait synchronously/asynchronously,
+// and terminate the process group on context cancellation with optional grace timeout.
 package processrunner
 
 import (
@@ -5,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"syscall"
 	"time"
@@ -13,9 +15,11 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 )
 
-type contextKey string
-
-const RequestIDKey contextKey = "requestID"
+var (
+	ErrStartCommand       = errors.New("failed to start command")
+	ErrInvalidPID         = errors.New("invalid PID")
+	ErrProcessGroupSignal = errors.New("failed to send signal to process group")
+)
 
 type Process struct {
 	cmd     cmdrunner.Command
@@ -40,7 +44,7 @@ func StartProcess(
 	cmd.SetStderr(writer)
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start command: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrStartCommand, err)
 	}
 
 	return &Process{
@@ -69,6 +73,7 @@ type Result struct {
 	Err      error
 }
 
+// WaitAsync starts waiting in background and returns a channel that receives exactly one Result.
 func (p *Process) WaitAsync(ctx context.Context) <-chan Result {
 	resultCh := make(chan Result, 1)
 	done := make(chan struct{})
@@ -78,7 +83,6 @@ func (p *Process) WaitAsync(ctx context.Context) <-chan Result {
 		defer close(resultCh)
 
 		err := p.cmd.Wait()
-
 		exitCode, finalErr := p.determineExitCodeAndError(ctx, err)
 
 		resultCh <- Result{
@@ -94,36 +98,25 @@ func (p *Process) WaitAsync(ctx context.Context) <-chan Result {
 	return resultCh
 }
 
-func (p *Process) terminateOnContextDone(
-	ctx context.Context,
-	done <-chan struct{},
-) {
-	rid := requestIDFromContext(ctx)
+func (p *Process) terminateOnContextDone(ctx context.Context, done <-chan struct{}) {
 	select {
 	case <-ctx.Done():
 		pid := p.cmd.Pid()
 
 		if p.timeout == nil {
-			log.Printf(
-				"[INFO] rid=%s Context closed, no grace termination timeout set, sending SIGKILL to process group",
-				rid,
-			)
-			p.signalProcessGroup(pid, syscall.SIGKILL)
+			_ = p.signalProcessGroup(pid, syscall.SIGKILL)
 
 			return
 		}
 
-		log.Printf("[INFO] rid=%s Context closed, sending SIGTERM to process group", rid)
-		p.signalProcessGroup(pid, syscall.SIGTERM)
+		_ = p.signalProcessGroup(pid, syscall.SIGTERM)
 
 		t := time.NewTimer(*p.timeout)
 		defer t.Stop()
 
 		select {
 		case <-t.C:
-			log.Printf("[INFO] rid=%s Process still running after %v, sending SIGKILL to process group",
-				rid, *p.timeout)
-			p.signalProcessGroup(pid, syscall.SIGKILL)
+			_ = p.signalProcessGroup(pid, syscall.SIGKILL)
 		case <-done:
 		}
 
@@ -131,17 +124,17 @@ func (p *Process) terminateOnContextDone(
 	}
 }
 
-func (p *Process) signalProcessGroup(pid int, sig syscall.Signal) {
+func (p *Process) signalProcessGroup(pid int, sig syscall.Signal) error {
 	if pid <= 0 {
-		log.Printf("[WARN] Cannot send %s to process group: PID is %d", sig, pid)
-
-		return
+		return fmt.Errorf("cannot send %s to process group: pid=%d: %w", sig, pid, ErrInvalidPID)
 	}
 
 	pgid := -pid
 	if err := p.runner.Kill(pgid, sig); err != nil {
-		log.Printf("[ERROR] Failed to send %s to process group %d: %v", sig, pgid, err)
+		return fmt.Errorf("failed to send %s to process group %d: %w: %w", sig, pgid, err, ErrProcessGroupSignal)
 	}
+
+	return nil
 }
 
 func (p *Process) determineExitCodeAndError(ctx context.Context, err error) (int, error) {
@@ -169,22 +162,4 @@ func (p *Process) determineExitCodeAndError(ctx context.Context, err error) (int
 
 func (p *Process) isTimeoutOrCanceled(ctx context.Context) bool {
 	return ctx.Err() != nil && (errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled))
-}
-
-// requestIDFromContext extracts request ID from context.
-func requestIDFromContext(ctx context.Context) string {
-	if v := ctx.Value(RequestIDKey); v != nil {
-		if rid, ok := v.(string); ok && rid != "" {
-			return rid
-		}
-	}
-
-	// Try with string key for compatibility
-	if v := ctx.Value("requestID"); v != nil {
-		if rid, ok := v.(string); ok && rid != "" {
-			return rid
-		}
-	}
-
-	return "-"
 }
