@@ -223,36 +223,15 @@ func prepareOutputAndRunCommand(
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
-	var (
-		writer io.Writer
-		async  bool
-	)
-
 	outputType := cmd.CommandConfig.OutputType
 
 	switch outputType {
 	case "none":
-		writer = io.Discard
-		async = true
+		return prepareOutputAndRunAsyncCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
 	case "stream":
-		if _, ok := responseWriter.(http.Flusher); !ok {
-			return httpx.NewWebError(
-				fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
-				http.StatusInternalServerError,
-				"",
-			)
-		}
-
-		writer = newFlushResponseWriter(responseWriter)
-
-		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		responseWriter.Header().Set("Cache-Control", "no-cache")
-		// nginx:
-		responseWriter.Header().Set("X-Accel-Buffering", "no")
+		return prepareOutputAndRunStreamCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
 	case "", "text":
-		writer = responseWriter
-
-		responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		return prepareOutputAndRunSyncCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
 	default:
 		return httpx.NewWebError(
 			fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType),
@@ -260,6 +239,50 @@ func prepareOutputAndRunCommand(
 			"",
 		)
 	}
+}
+
+func prepareOutputAndRunAsyncCommand(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	registry *callgate.Registry,
+	cmd *config.URLCommand,
+	cmdResult *cmdbuilder.Result,
+	responseWriter http.ResponseWriter,
+) error {
+	return runCommand(
+		ctx,
+		runner,
+		registry,
+		cmd,
+		cmdResult,
+		io.Discard,
+		true,
+		responseWriter,
+	)
+}
+
+func prepareOutputAndRunStreamCommand(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	registry *callgate.Registry,
+	cmd *config.URLCommand,
+	cmdResult *cmdbuilder.Result,
+	responseWriter http.ResponseWriter,
+) error {
+	if _, ok := responseWriter.(http.Flusher); !ok {
+		return httpx.NewWebError(
+			fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
+			http.StatusInternalServerError,
+			"",
+		)
+	}
+
+	writer := newFlushResponseWriter(responseWriter)
+
+	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	responseWriter.Header().Set("Cache-Control", "no-cache")
+	// nginx:
+	responseWriter.Header().Set("X-Accel-Buffering", "no")
 
 	return runCommand(
 		ctx,
@@ -268,7 +291,31 @@ func prepareOutputAndRunCommand(
 		cmd,
 		cmdResult,
 		writer,
-		async,
+		false,
+		responseWriter,
+	)
+}
+
+func prepareOutputAndRunSyncCommand(
+	ctx context.Context,
+	runner cmdrunner.Runner,
+	registry *callgate.Registry,
+	cmd *config.URLCommand,
+	cmdResult *cmdbuilder.Result,
+	responseWriter http.ResponseWriter,
+) error {
+	writer := responseWriter
+
+	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+	return runCommand(
+		ctx,
+		runner,
+		registry,
+		cmd,
+		cmdResult,
+		writer,
+		false,
 		responseWriter,
 	)
 }
