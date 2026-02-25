@@ -53,12 +53,14 @@ func (e *Executor) Run(
 
 	exit, done, runErr := action(ctx)
 
-	release()
-
-	//nolint:godox
-	// TODO: This channel will be used in the future to keep the gate held until async process finishes.
-	// Currently, the lock is released immediately after StartProcess, which is a known bug for async mode.
-	_ = done
+	if done != nil {
+		go func() {
+			<-done
+			release()
+		}()
+	} else {
+		release()
+	}
 
 	return exit, runErr
 }
