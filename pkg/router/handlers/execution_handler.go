@@ -75,6 +75,14 @@ func executionHandler(
 }
 
 func translateError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, callgate.ErrBusy) {
+		return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
+	}
+
 	return err
 }
 
@@ -111,14 +119,12 @@ func runCommand(
 
 		gate, gateErr := registry.GetOrCreate(groupName, cmd.CallGate.Mode)
 		if gateErr != nil {
-			return httpx.NewWebError(
-				gateErr, http.StatusInternalServerError, fmt.Sprintf("callgate registry: %v", gateErr),
-			)
+			return fmt.Errorf("callgate registry: %w", gateErr)
 		}
 
 		exitCode, err = runWithGate(ctx, action, gate)
-		if err != nil && errors.Is(err, callgate.ErrBusy) {
-			return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
+		if err != nil {
+			return err
 		}
 	} else {
 		exitCode, err = action(ctx)
