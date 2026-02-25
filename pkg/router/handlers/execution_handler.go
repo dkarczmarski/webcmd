@@ -219,7 +219,17 @@ func executeCommand(
 	}
 
 	if async {
-		proc.WaitAsync(ctx)
+		rid := requestIDFromContext(ctx)
+
+		go func() {
+			log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
+
+			if err := proc.WaitAsync(ctx); err != nil {
+				log.Printf("[ERROR] rid=%s Asynchronous command failed, error: %v", rid, err)
+			} else {
+				log.Printf("[INFO] rid=%s Asynchronous command finished successfully", rid)
+			}
+		}()
 
 		return 0, nil
 	}

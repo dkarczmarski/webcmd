@@ -64,27 +64,22 @@ func (p *Process) WaitSync(ctx context.Context) (int, error) {
 	return p.determineExitCodeAndError(ctx, err)
 }
 
-func (p *Process) WaitAsync(ctx context.Context) {
-	rid := requestIDFromContext(ctx)
+func (p *Process) WaitAsync(ctx context.Context) error {
 	done := make(chan struct{})
-
-	go func() {
-		log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
-
-		waitErr := p.cmd.Wait()
-
-		close(done)
-
-		if waitErr != nil {
-			log.Printf("[ERROR] rid=%s Asynchronous command failed, error: %v", rid, waitErr)
-		} else {
-			log.Printf("[INFO] rid=%s Asynchronous command finished successfully", rid)
-		}
-	}()
 
 	go func() {
 		p.terminateOnContextDone(ctx, done)
 	}()
+
+	if err := p.cmd.Wait(); err != nil {
+		close(done)
+
+		return fmt.Errorf("command wait: %w", err)
+	}
+
+	close(done)
+
+	return nil
 }
 
 func (p *Process) terminateOnContextDone(
