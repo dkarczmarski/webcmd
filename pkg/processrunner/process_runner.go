@@ -138,26 +138,45 @@ func (p *Process) signalProcessGroup(pid int, sig syscall.Signal) error {
 }
 
 func (p *Process) determineExitCodeAndError(ctx context.Context, err error) (int, error) {
-	if err != nil {
-		if p.isTimeoutOrCanceled(ctx) {
-			// Timeout or cancellation takes precedence over other errors as this is intentional.
-			//nolint:wrapcheck
-			return -1, ctx.Err()
-		}
-
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) {
-			return exitError.ExitCode(), err
-		}
-
-		return -1, err
+	// If the context was canceled or timed out,
+	// it means the process was terminated externally.
+	if p.isTimeoutOrCanceled(ctx) {
+		// Return -1 and the context error.
+		//nolint:wrapcheck
+		return -1, ctx.Err()
 	}
 
-	if p.cmd.ProcessState() != nil {
-		return p.cmd.ProcessState().ExitCode(), nil
+	// If Wait() returned no error,
+	// the process exited normally (exit code available in ProcessState).
+	if err == nil {
+		if ps := p.cmd.ProcessState(); ps != nil {
+			return ps.ExitCode(), nil
+		}
+
+		// This should not normally happen after Wait(),
+		// but return 0 as a safe default.
+		return 0, nil
 	}
 
-	return 0, nil
+	// If the error is *exec.ExitError,
+	// the process exited by itself (possibly with non-zero exit code)
+	// OR it was terminated by a signal.
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// On Unix systems, we can check the WaitStatus.
+		// If the process was terminated by a signal,
+		// it means external intervention (SIGTERM/SIGKILL).
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			return -1, err
+		}
+
+		// Otherwise, the process exited normally (even if exit code != 0).
+		// In this case, exit code is a valid result and error is nil.
+		return exitErr.ExitCode(), nil
+	}
+
+	// Any other error from Wait() is treated as an external/infrastructure error.
+	return -1, err
 }
 
 func (p *Process) isTimeoutOrCanceled(ctx context.Context) bool {

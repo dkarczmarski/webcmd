@@ -1775,10 +1775,6 @@ func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *
 	if !strings.Contains(body, "Command failed with exit code: 7") {
 		t.Errorf("expected body to contain exit code 7 failure message, got %q", body)
 	}
-
-	if !strings.Contains(body, "error:") {
-		t.Errorf("expected body to contain 'error:' part, got %q", body)
-	}
 }
 
 type erroringResponseWriter struct {
