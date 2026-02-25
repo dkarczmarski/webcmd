@@ -99,8 +99,13 @@ func runCommand(
 	rid := requestIDFromContext(ctx)
 
 	action := func(ctx context.Context) (int, error) {
+		command := cmdResult.Command
+		arguments := cmdResult.Arguments
+		rid := requestIDFromContext(ctx)
+		log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
+
 		return executeCommand(
-			ctx, runner, cmdResult.Command, cmdResult.Arguments, writer, async, cmd.GraceTerminationTimeout,
+			ctx, runner, command, arguments, writer, async, cmd.GraceTerminationTimeout,
 		)
 	}
 
@@ -209,9 +214,6 @@ func executeCommand(
 	async bool,
 	graceTerminationTimeout *time.Duration,
 ) (int, error) {
-	rid := requestIDFromContext(ctx)
-	log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
-
 	cmd := runner.Command(command, arguments...)
 
 	//nolint:exhaustruct
