@@ -74,6 +74,14 @@ func TestErrorSink(t *testing.T) {
 			expectedStatus:  http.StatusTeapot,
 			expectedBody:    "I am a teapot\n",
 		},
+		{
+			name:            "SilentError should be ignored",
+			err:             httpx.NewSilentError(errors.New("silent error")),
+			withErrorHeader: true,
+			expectedHeader:  "",
+			expectedStatus:  http.StatusOK,
+			expectedBody:    "",
+		},
 	}
 
 	for _, tt := range tests {

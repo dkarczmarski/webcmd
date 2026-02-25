@@ -52,14 +52,41 @@ type statusCoder interface {
 	Message() string
 }
 
+type silentError interface {
+	error
+	Silent() bool
+}
+
+type SilentError struct {
+	err error
+}
+
+func NewSilentError(err error) *SilentError {
+	return &SilentError{err: err}
+}
+
+func (e *SilentError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
+
+	return "silent error"
+}
+
+func (e *SilentError) Unwrap() error { return e.err }
+
+func (e *SilentError) Silent() bool { return true }
+
 // Compile-time check.
 var (
 	_ statusCoder = (*WebError)(nil)
+	_ silentError = (*SilentError)(nil)
 )
 
 // ErrorSink returns a terminal handler that logs errors and writes appropriate HTTP responses.
 // If logger is nil, log.Default() is used.
 // If withErrorHeader is true, the error message is added to the X-Error-Message HTTP header.
+// If the error implements silentError and Silent() returns true, it is completely ignored.
 func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.Handler {
 	if logger == nil {
 		logger = log.Default()
@@ -69,6 +96,11 @@ func ErrorSink(logger *log.Logger, withErrorHeader bool) func(WebHandler) http.H
 		return http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
 			err := next.ServeHTTP(responseWriter, request)
 			if err == nil {
+				return
+			}
+
+			var se silentError
+			if errors.As(err, &se) && se.Silent() {
 				return
 			}
 
