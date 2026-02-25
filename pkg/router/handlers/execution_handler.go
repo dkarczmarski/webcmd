@@ -17,6 +17,7 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 )
@@ -97,47 +98,44 @@ func runCommand(
 ) error {
 	rid := requestIDFromContext(ctx)
 
-	action := func(ctx context.Context) (int, error) {
+	exec := gateexec.New(registry)
+
+	action := func(ctx context.Context) (int, <-chan struct{}, error) {
 		command := cmdResult.Command
 		arguments := cmdResult.Arguments
+
 		rid := requestIDFromContext(ctx)
 		log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
 
-		return executeCommand(
-			ctx, runner, command, arguments, writer, async, cmd.GraceTerminationTimeout,
-		)
+		exit, err := executeCommand(ctx, runner, command, arguments, writer, async, cmd.GraceTerminationTimeout)
+
+		//nolint:godox
+		// TODO: Currently we don't have done signaling (because async returns immediately)
+		return exit, nil, err
 	}
 
-	var (
-		exitCode int
-		err      error
-	)
-
-	if cmd.CallGate != nil && registry != nil {
-		// Default to the unique endpoint identifier (Verb + Path) if groupName is not explicitly provided.
-		// This ensures that concurrency limits apply per-endpoint by default.
-		groupName := cmd.URL
-		if cmd.CallGate.GroupName != nil {
-			groupName = *cmd.CallGate.GroupName
+	// Default to the unique endpoint identifier (Verb + Path) from cmd.URL if groupName is not explicitly provided.
+	// This ensures that concurrency limits apply per-endpoint by default.
+	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
+	if err != nil {
+		if errors.Is(err, callgate.ErrBusy) || strings.Contains(err.Error(), "callgate registry") {
+			return translateError(err)
 		}
 
-		gate, gateErr := registry.GetOrCreate(groupName, cmd.CallGate.Mode)
-		if gateErr != nil {
-			return fmt.Errorf("callgate registry: %w", gateErr)
-		}
-
-		exitCode, err = runWithGate(ctx, action, gate)
-		if err != nil {
-			return err
-		}
-	} else {
-		exitCode, err = action(ctx)
-	}
-
-	if exitCode != 0 || err != nil {
 		log.Printf("[WARN] rid=%s Command failed with exit code: %d, error: %v", rid, exitCode, err)
 
 		errorMessage := fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err)
+		if _, writeErr := responseWriter.Write([]byte(errorMessage)); writeErr != nil {
+			log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
+		}
+
+		return nil
+	}
+
+	if exitCode != 0 {
+		log.Printf("[WARN] rid=%s Command failed with exit code: %d", rid, exitCode)
+
+		errorMessage := fmt.Sprintf("Command failed with exit code: %d", exitCode)
 		if _, writeErr := responseWriter.Write([]byte(errorMessage)); writeErr != nil {
 			log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
 		}
@@ -411,15 +409,4 @@ func setNestedParam(params map[string]interface{}, parentKey, childKey string, v
 	if parentMap, ok := params[parentKey].(map[string]interface{}); ok {
 		parentMap[childKey] = value
 	}
-}
-
-func runWithGate(ctx context.Context, action func(context.Context) (int, error), gate callgate.CallGate) (int, error) {
-	release, err := gate.Acquire(ctx)
-	if err != nil {
-		return -1, fmt.Errorf("callgate acquire: %w", err)
-	}
-
-	defer release()
-
-	return action(ctx)
 }
