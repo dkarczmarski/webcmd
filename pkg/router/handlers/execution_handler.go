@@ -10,9 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
@@ -20,6 +18,7 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
+	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 )
 
 var ErrCommandFailed = errors.New("command failed")
@@ -214,26 +213,23 @@ func executeCommand(
 	async bool,
 	graceTerminationTimeout *time.Duration,
 ) (int, error) {
-	cmd := runner.Command(command, arguments...)
-
-	//nolint:exhaustruct
-	cmd.SetSysProcAttr(&syscall.SysProcAttr{
-		Setpgid: true,
-	})
-	cmd.SetStdout(writer)
-	cmd.SetStderr(writer)
-
-	if err := cmd.Start(); err != nil {
-		return -1, fmt.Errorf("failed to start command: %w", err)
+	proc, err := processrunner.StartProcess(runner, command, arguments, writer, graceTerminationTimeout)
+	if err != nil {
+		return -1, fmt.Errorf("failed to start process: %w", err)
 	}
 
 	if async {
-		handleAsyncWait(ctx, runner, cmd, graceTerminationTimeout)
+		proc.WaitAsync(ctx)
 
 		return 0, nil
 	}
 
-	return handleSyncWait(ctx, runner, cmd, graceTerminationTimeout)
+	exitCode, err := proc.WaitSync(ctx)
+	if err != nil {
+		return exitCode, fmt.Errorf("process wait failed: %w", err)
+	}
+
+	return exitCode, nil
 }
 
 func prepareOutputAndRunCommand(
@@ -392,133 +388,6 @@ func processBodyAsJSON(bodyBytes []byte, params map[string]interface{}) error {
 	setNestedParam(params, "body", "json", bodyJSON)
 
 	return nil
-}
-
-func handleSyncWait(
-	ctx context.Context,
-	runner cmdrunner.Runner,
-	cmd cmdrunner.Command,
-	graceTerminationTimeout *time.Duration,
-) (int, error) {
-	done := make(chan struct{})
-
-	go func() {
-		terminateOnContextDone(ctx, runner, done, cmd, graceTerminationTimeout)
-	}()
-
-	err := cmd.Wait()
-
-	close(done)
-
-	return determineExitCodeAndError(ctx, cmd, err)
-}
-
-func handleAsyncWait(
-	ctx context.Context,
-	runner cmdrunner.Runner,
-	cmd cmdrunner.Command,
-	graceTerminationTimeout *time.Duration,
-) {
-	rid := requestIDFromContext(ctx)
-	done := make(chan struct{})
-
-	go func() {
-		log.Printf("[INFO] rid=%s Asynchronously waiting for command to finish", rid)
-
-		waitErr := cmd.Wait()
-
-		close(done)
-
-		if waitErr != nil {
-			log.Printf("[ERROR] rid=%s Asynchronous command failed, error: %v", rid, waitErr)
-		} else {
-			log.Printf("[INFO] rid=%s Asynchronous command finished successfully", rid)
-		}
-	}()
-
-	go func() {
-		terminateOnContextDone(ctx, runner, done, cmd, graceTerminationTimeout)
-	}()
-}
-
-func terminateOnContextDone(
-	ctx context.Context,
-	runner cmdrunner.Runner,
-	done <-chan struct{},
-	cmd cmdrunner.Command,
-	graceTerminationTimeout *time.Duration,
-) {
-	rid := requestIDFromContext(ctx)
-	select {
-	case <-ctx.Done():
-		pid := cmd.Pid()
-
-		if graceTerminationTimeout == nil {
-			log.Printf(
-				"[INFO] rid=%s Context closed, no grace termination timeout set, sending SIGKILL to process group",
-				rid,
-			)
-			signalProcessGroup(runner, pid, syscall.SIGKILL)
-
-			return
-		}
-
-		log.Printf("[INFO] rid=%s Context closed, sending SIGTERM to process group", rid)
-		signalProcessGroup(runner, pid, syscall.SIGTERM)
-
-		t := time.NewTimer(*graceTerminationTimeout)
-		defer t.Stop()
-
-		select {
-		case <-t.C:
-			log.Printf("[INFO] rid=%s Process still running after %v, sending SIGKILL to process group",
-				rid, *graceTerminationTimeout)
-			signalProcessGroup(runner, pid, syscall.SIGKILL)
-		case <-done:
-		}
-
-	case <-done:
-	}
-}
-
-func signalProcessGroup(runner cmdrunner.Runner, pid int, sig syscall.Signal) {
-	if pid <= 0 {
-		log.Printf("[WARN] Cannot send %s to process group: PID is %d", sig, pid)
-
-		return
-	}
-
-	pgid := -pid
-	if err := runner.Kill(pgid, sig); err != nil {
-		log.Printf("[ERROR] Failed to send %s to process group %d: %v", sig, pgid, err)
-	}
-}
-
-func determineExitCodeAndError(ctx context.Context, cmd cmdrunner.Command, err error) (int, error) {
-	if err != nil {
-		if isTimeoutOrCanceled(ctx) {
-			// Timeout or cancellation takes precedence over other errors as this is intentional.
-			//nolint:wrapcheck
-			return -1, ctx.Err()
-		}
-
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) {
-			return exitError.ExitCode(), err
-		}
-
-		return -1, err
-	}
-
-	if cmd.ProcessState() != nil {
-		return cmd.ProcessState().ExitCode(), nil
-	}
-
-	return 0, nil
-}
-
-func isTimeoutOrCanceled(ctx context.Context) bool {
-	return ctx.Err() != nil && (errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled))
 }
 
 func setNestedParam(params map[string]interface{}, parentKey, childKey string, value interface{}) {
