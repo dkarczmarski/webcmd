@@ -83,6 +83,10 @@ func translateError(err error) error {
 		return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
 	}
 
+	if errors.Is(err, gateexec.ErrRegistry) {
+		return httpx.NewWebError(err, http.StatusInternalServerError, "Invalid callgate configuration")
+	}
+
 	return err
 }
 
@@ -118,7 +122,7 @@ func runCommand(
 	// This ensures that concurrency limits apply per-endpoint by default.
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
 	if err != nil {
-		if errors.Is(err, callgate.ErrBusy) || strings.Contains(err.Error(), "callgate registry") {
+		if errors.Is(err, callgate.ErrBusy) || errors.Is(err, gateexec.ErrRegistry) || errors.Is(err, gateexec.ErrAcquire) {
 			return translateError(err)
 		}
 

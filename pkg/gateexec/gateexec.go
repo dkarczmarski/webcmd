@@ -2,10 +2,16 @@ package gateexec
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+)
+
+var (
+	ErrRegistry = errors.New("gate executor: registry error")
+	ErrAcquire  = errors.New("gate executor: acquire error")
 )
 
 type Action func(context.Context) (result int, done <-chan struct{}, err error)
@@ -37,12 +43,12 @@ func (e *Executor) Run(
 
 	gate, err := e.registry.GetOrCreate(group, gateCfg.Mode)
 	if err != nil {
-		return -1, fmt.Errorf("callgate registry: %w", err)
+		return -1, fmt.Errorf("%w: %w", ErrRegistry, err)
 	}
 
 	release, err := gate.Acquire(ctx)
 	if err != nil {
-		return -1, fmt.Errorf("callgate acquire: %w", err)
+		return -1, fmt.Errorf("%w: %w", ErrAcquire, err)
 	}
 
 	exit, done, runErr := action(ctx)

@@ -906,13 +906,13 @@ func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code == http.StatusOK {
-		t.Fatalf("expected non-200 status for invalid callgate mode, got %d, body=%q", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 for invalid callgate mode, got %d, body=%q", rr.Code, rr.Body.String())
 	}
 
 	errMsg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(errMsg, "callgate registry") {
-		t.Errorf("expected X-Error-Message to contain %q, got %q", "callgate registry", errMsg)
+	if !strings.Contains(errMsg, "Invalid callgate configuration") {
+		t.Errorf("expected X-Error-Message to contain %q, got %q", "Invalid callgate configuration", errMsg)
 	}
 }
 
