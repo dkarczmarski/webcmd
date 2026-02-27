@@ -117,7 +117,15 @@ func runCommand(
 		}
 
 		if async {
-			return 0, waitAsyncAndLog(ctx, proc, rid), nil
+			asyncCtx := context.WithoutCancel(ctx)
+
+			var cancel context.CancelFunc = func() {}
+
+			if cmd.CommandConfig.Timeout != nil {
+				asyncCtx, cancel = context.WithTimeout(asyncCtx, *cmd.CommandConfig.Timeout)
+			}
+
+			return 0, waitAsyncAndLog(asyncCtx, proc, cancel), nil
 		}
 
 		exitCode, err := proc.WaitSync(ctx)
@@ -133,22 +141,31 @@ func runCommand(
 	return handleCommandResult(rid, exitCode, err, responseWriter)
 }
 
-func waitAsyncAndLog(ctx context.Context, proc *processrunner.Process, rid string) <-chan struct{} {
+func waitAsyncAndLog(
+	ctx context.Context,
+	proc *processrunner.Process,
+	cancel context.CancelFunc,
+) <-chan struct{} {
 	resCh := proc.WaitAsync(ctx)
 
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		defer cancel()
+
+		rid := requestIDFromContext(ctx)
 
 		result := <-resCh
 		if result.Err != nil {
 			log.Printf("[ERROR] rid=%s Asynchronous command failed (exit code: %d), error: %v",
 				rid, result.ExitCode, result.Err)
-		} else {
-			log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
-				rid, result.ExitCode)
+
+			return
 		}
+
+		log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
+			rid, result.ExitCode)
 	}()
 
 	return done
