@@ -22,7 +22,11 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 )
 
-var ErrCommandFailed = errors.New("command failed")
+var (
+	ErrCommandFailed   = errors.New("command failed")
+	ErrCommandNotFound = errors.New("command not found")
+	ErrInvalidJSONBody = errors.New("invalid JSON body")
+)
 
 // ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
 // request context.
@@ -51,7 +55,7 @@ func executionHandler(
 
 	cmd, err := getURLCommandFromContext(request)
 	if err != nil {
-		return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
+		return err
 	}
 
 	params, err := extractParams(request, cmd)
@@ -85,6 +89,14 @@ func translateError(err error) error {
 
 	if errors.Is(err, gateexec.ErrRegistry) {
 		return httpx.NewWebError(err, http.StatusInternalServerError, "Invalid callgate configuration")
+	}
+
+	if errors.Is(err, ErrCommandNotFound) {
+		return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
+	}
+
+	if errors.Is(err, ErrInvalidJSONBody) {
+		return httpx.NewWebError(err, http.StatusBadRequest, "must be a JSON object")
 	}
 
 	return err
@@ -217,7 +229,7 @@ func startCommandProcess(
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
 	valCmd := request.Context().Value(URLCommandKey)
 	if valCmd == nil {
-		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrInvalidRequestContext)
+		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrCommandNotFound)
 	}
 
 	cmd, ok := valCmd.(*config.URLCommand)
@@ -238,11 +250,7 @@ func extractParams(request *http.Request, cmd *config.URLCommand) (map[string]in
 
 	bodyBytes, err := io.ReadAll(request.Body)
 	if err != nil {
-		return nil, httpx.NewWebError(
-			fmt.Errorf("failed to read request body: %w", err),
-			http.StatusInternalServerError,
-			"",
-		)
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	setNestedParam(params, "body", "text", string(bodyBytes))
@@ -262,11 +270,7 @@ func buildCommand(
 ) (*cmdbuilder.Result, error) {
 	cmdResult, err := cmdbuilder.BuildCommand(template, params)
 	if err != nil {
-		return nil, httpx.NewWebError(
-			fmt.Errorf("error building command: %w", err),
-			http.StatusInternalServerError,
-			"",
-		)
+		return nil, fmt.Errorf("error building command: %w", err)
 	}
 
 	return &cmdResult, nil
@@ -290,11 +294,7 @@ func prepareOutputAndRunCommand(
 	case "", "text":
 		return prepareOutputAndRunSyncCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
 	default:
-		return httpx.NewWebError(
-			fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType),
-			http.StatusInternalServerError,
-			"unknown output type",
-		)
+		return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType)
 	}
 }
 
@@ -418,11 +418,7 @@ func (j JSONBody) String() string {
 func processBodyAsJSON(bodyBytes []byte, params map[string]interface{}) error {
 	var bodyJSON JSONBody
 	if err := json.Unmarshal(bodyBytes, &bodyJSON); err != nil {
-		return httpx.NewWebError(
-			fmt.Errorf("failed to parse JSON body: %w", err),
-			http.StatusBadRequest,
-			"must be a JSON object",
-		)
+		return fmt.Errorf("%w: failed to parse JSON body: %w", ErrInvalidJSONBody, err)
 	}
 
 	setNestedParam(params, "body", "json", bodyJSON)
