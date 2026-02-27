@@ -3,6 +3,7 @@ package handlers
 //go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_cmdrunner.go -package=mocks github.com/dkarczmarski/webcmd/pkg/cmdrunner Runner,Command
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,9 +25,9 @@ import (
 )
 
 var (
-	ErrCommandFailed   = errors.New("command failed")
-	ErrCommandNotFound = errors.New("command not found")
-	ErrInvalidJSONBody = errors.New("invalid JSON body")
+	ErrStreamingNotSupported = errors.New("streaming not supported")
+	ErrCommandNotFound       = errors.New("command not found")
+	ErrInvalidJSONBody       = errors.New("invalid JSON body")
 )
 
 // ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
@@ -40,7 +42,12 @@ var (
 // response body.
 func ExecutionHandler(runner cmdrunner.Runner, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		return translateError(executionHandler(responseWriter, request, runner, registry))
+		err := executionHandler(responseWriter, request, runner, registry)
+		if err != nil {
+			return translateError(err)
+		}
+
+		return nil
 	})
 }
 
@@ -83,6 +90,10 @@ func translateError(err error) error {
 		return nil
 	}
 
+	if errors.Is(err, ErrStreamingNotSupported) {
+		return httpx.NewWebError(err, http.StatusInternalServerError, ErrStreamingNotSupported.Error())
+	}
+
 	if errors.Is(err, callgate.ErrBusy) {
 		return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
 	}
@@ -117,8 +128,25 @@ func runCommand(
 	action := createGateAction(runner, cmd, cmdResult, writer, async)
 
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
+	if err != nil {
+		if errors.Is(err, callgate.ErrBusy) || errors.Is(err, gateexec.ErrRegistry) || errors.Is(err, gateexec.ErrAcquire) {
+			return fmt.Errorf("failed to start command: %w", err)
+		}
 
-	return handleCommandResult(rid, exitCode, err, responseWriter)
+		responseWriter.Header().Set("X-Success", "false")
+		responseWriter.Header().Set("X-Error-Message", err.Error())
+		responseWriter.Header().Set("X-Exit-Code", "")
+		log.Printf("[ERROR] rid=%s Command failed with error: %v", rid, err)
+
+		return httpx.NewSilentError(err)
+	}
+
+	responseWriter.Header().Set("X-Success", strconv.FormatBool(exitCode == 0))
+	responseWriter.Header().Set("X-Error-Message", "")
+	responseWriter.Header().Set("X-Exit-Code", strconv.Itoa(exitCode))
+	log.Printf("[INFO] rid=%s Command failed with exit code: %d", rid, exitCode)
+
+	return nil
 }
 
 func createGateAction(
@@ -189,34 +217,6 @@ func waitAsyncAndLog(
 	}()
 
 	return done
-}
-
-func handleCommandResult(rid string, exitCode int, err error, responseWriter http.ResponseWriter) error {
-	if err != nil {
-		if errors.Is(err, callgate.ErrBusy) || errors.Is(err, gateexec.ErrRegistry) || errors.Is(err, gateexec.ErrAcquire) {
-			return translateError(err)
-		}
-
-		log.Printf("[WARN] rid=%s Command failed with exit code: %d, error: %v", rid, exitCode, err)
-
-		writeErrorMessage(rid, responseWriter, fmt.Sprintf("Command failed with exit code: %d, error: %v", exitCode, err))
-
-		return nil
-	}
-
-	if exitCode != 0 {
-		log.Printf("[WARN] rid=%s Command failed with exit code: %d", rid, exitCode)
-
-		writeErrorMessage(rid, responseWriter, fmt.Sprintf("Command failed with exit code: %d", exitCode))
-	}
-
-	return nil
-}
-
-func writeErrorMessage(rid string, responseWriter http.ResponseWriter, message string) {
-	if _, writeErr := responseWriter.Write([]byte(message)); writeErr != nil {
-		log.Printf("[ERROR] rid=%s Failed to write error message: %v", rid, writeErr)
-	}
 }
 
 func startCommandProcess(
@@ -335,19 +335,19 @@ func prepareOutputAndRunStreamCommand(
 	responseWriter http.ResponseWriter,
 ) error {
 	if _, ok := responseWriter.(http.Flusher); !ok {
-		return httpx.NewWebError(
-			fmt.Errorf("streaming not supported: %w", ErrBadConfiguration),
-			http.StatusInternalServerError,
-			"response writer does not support flushing",
-		)
+		return ErrStreamingNotSupported
 	}
 
-	writer := newFlushResponseWriter(responseWriter)
+	responseWriter.Header().Add("Trailer", "X-Success")
+	responseWriter.Header().Add("Trailer", "X-Error-Message")
+	responseWriter.Header().Add("Trailer", "X-Exit-Code")
 
 	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	responseWriter.Header().Set("Cache-Control", "no-cache")
 	// nginx:
 	responseWriter.Header().Set("X-Accel-Buffering", "no")
+
+	writer := newFlushResponseWriter(responseWriter)
 
 	return runCommand(
 		ctx,
@@ -369,20 +369,29 @@ func prepareOutputAndRunSyncCommand(
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
-	writer := responseWriter
+	var buf bytes.Buffer
 
 	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	return runCommand(
+	err := runCommand(
 		ctx,
 		runner,
 		registry,
 		cmd,
 		cmdResult,
-		writer,
+		&buf,
 		false,
 		responseWriter,
 	)
+	if err != nil {
+		return err
+	}
+
+	if _, writeErr := responseWriter.Write(buf.Bytes()); writeErr != nil {
+		log.Printf("[ERROR] failed to write buffered output: %v", writeErr)
+	}
+
+	return nil
 }
 
 func extractQueryParams(request *http.Request) map[string]string {

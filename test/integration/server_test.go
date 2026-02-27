@@ -176,7 +176,7 @@ func TestServerIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("504 Gateway Timeout", func(t *testing.T) {
+	t.Run("Execution Timeout", func(t *testing.T) {
 		t.Parallel()
 		srv := setupServer(t)
 
@@ -185,15 +185,17 @@ func TestServerIntegration(t *testing.T) {
 
 		srv.ServeHTTP(rec, req)
 
-		// Intentional decision to return 200 OK because the command's exit status
-		// is unknown when headers are sent (especially for streaming).
-		// Error messages are appended to the response body.
 		if rec.Code != http.StatusOK {
 			t.Errorf("Expected status code %d, got %d", http.StatusOK, rec.Code)
 		}
 
-		if !strings.Contains(rec.Body.String(), "context deadline exceeded") {
-			t.Errorf("Expected timeout error message in body, got %q", rec.Body.String())
+		if rec.Header().Get("X-Success") != "false" {
+			t.Errorf("Expected X-Success: false, got %q", rec.Header().Get("X-Success"))
+		}
+
+		errMsg := rec.Header().Get("X-Error-Message")
+		if !strings.Contains(errMsg, "context deadline exceeded") {
+			t.Errorf("Expected timeout error message in X-Error-Message header, got %q", errMsg)
 		}
 	})
 
@@ -210,8 +212,12 @@ func TestServerIntegration(t *testing.T) {
 			t.Errorf("Expected status code %d, got %d", http.StatusOK, rec.Code)
 		}
 
-		if !strings.Contains(rec.Body.String(), "Command failed with exit code: 1") {
-			t.Errorf("Expected error message in body, got %q", rec.Body.String())
+		if rec.Header().Get("X-Success") != "false" {
+			t.Errorf("Expected X-Success: false, got %q", rec.Header().Get("X-Success"))
+		}
+
+		if rec.Header().Get("X-Exit-Code") != "1" {
+			t.Errorf("Expected X-Exit-Code: 1, got %q", rec.Header().Get("X-Exit-Code"))
 		}
 	})
 

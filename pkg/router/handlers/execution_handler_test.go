@@ -774,8 +774,8 @@ func TestExecutionHandler_PrepareOutput_Stream_Failure(t *testing.T) {
 	}
 
 	errMsg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(errMsg, "response writer does not support flushing") {
-		t.Errorf("expected X-Error-Message to contain 'response writer does not support flushing', got %q", errMsg)
+	if !strings.Contains(errMsg, "streaming not supported") {
+		t.Errorf("expected X-Error-Message to contain 'streaming not supported', got %q", errMsg)
 	}
 }
 
@@ -989,14 +989,13 @@ func TestExecutionHandler_ExecuteCommand_StartError_WritesFailedToStart(t *testi
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	// runCommand returns nil and only writes the error to the response body, so the status is typically 200.
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d, body=%q", rr.Code, rr.Body.String())
 	}
 
-	body := rr.Body.String()
-	if !strings.Contains(body, "failed to start command") {
-		t.Errorf("expected body to contain %q, got %q", "failed to start command", body)
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "failed to start command") {
+		t.Errorf("expected X-Error-Message header to contain %q, got %q", "failed to start command", errMsg)
 	}
 }
 
@@ -1176,9 +1175,9 @@ func TestExecutionHandler_SyncWait_ExitError_NonZeroExit_WritesFailureMessage(t 
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	body := rr.Body.String()
-	if !strings.Contains(body, "Command failed with exit code: 7") {
-		t.Errorf("expected body to contain exit code 7, got %q", body)
+	exitCodeHeader := rr.Header().Get("X-Exit-Code")
+	if exitCodeHeader != "7" {
+		t.Errorf("expected X-Exit-Code header to be 7, got %q", exitCodeHeader)
 	}
 }
 
@@ -1223,14 +1222,14 @@ func TestExecutionHandler_SyncWait_WaitReturnsNonExitError_WritesFailureMessage(
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	body := rr.Body.String()
-
-	if !strings.Contains(body, "Command failed with exit code: -1") {
-		t.Errorf("expected body to contain exit code -1, got %q", body)
+	exitCodeHeader := rr.Header().Get("X-Exit-Code")
+	if exitCodeHeader != "" {
+		t.Errorf("expected X-Exit-Code header to be empty, got %q", exitCodeHeader)
 	}
 
-	if !strings.Contains(body, "wait boom") {
-		t.Errorf("expected body to contain %q, got %q", "wait boom", body)
+	errorMessageHeader := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errorMessageHeader, "wait boom") {
+		t.Errorf("expected X-Error-Message header to contain %q, got %q", "wait boom", errorMessageHeader)
 	}
 }
 
@@ -1348,8 +1347,9 @@ func TestExecutionHandler_TerminateOnCancel_NoGrace_SendsSIGKILL(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	if !strings.Contains(rr.Body.String(), "context canceled") {
-		t.Errorf("expected body to contain %q, got %q", "context canceled", rr.Body.String())
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "context canceled") {
+		t.Errorf("expected X-Error-Message header to contain %q, got %q", "context canceled", errMsg)
 	}
 }
 
@@ -1528,19 +1528,19 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	body := rr.Body.String()
-
-	if !strings.Contains(body, "context deadline exceeded") {
-		t.Errorf("expected body to contain %q, got %q", "context deadline exceeded", body)
+	exitCodeHeader := rr.Header().Get("X-Exit-Code")
+	if exitCodeHeader != "" {
+		t.Errorf("expected X-Exit-Code header to be empty, got %q", exitCodeHeader)
 	}
 
-	if !strings.Contains(body, "Command failed with exit code: -1") {
-		t.Errorf("expected body to contain exit code -1, got %q", body)
+	errMsg := rr.Header().Get("X-Error-Message")
+	if !strings.Contains(errMsg, "context deadline exceeded") {
+		t.Errorf("expected X-Error-Message header to contain %q, got %q", "context deadline exceeded", errMsg)
 	}
 
 	// Make sure it did not report the process exit code (7) as primary.
-	if strings.Contains(body, "Command failed with exit code: 7") {
-		t.Errorf("did not expect exit code 7 to be reported, got %q", body)
+	if exitCodeHeader == "7" {
+		t.Errorf("did not expect exit code 7 to be reported, got %q", exitCodeHeader)
 	}
 }
 
@@ -1713,7 +1713,7 @@ func TestExecutionHandler_AsyncNone_WaitError_LogsButDoesNotAffectResponse(t *te
 	}
 }
 
-func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *testing.T) {
+func TestExecutionHandler_RunCommand_SetsExitCodeHeader_OnNonZeroExit(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1743,7 +1743,7 @@ func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *
 
 	mockCmd.EXPECT().SetSysProcAttr(gomock.Any())
 	mockCmd.EXPECT().SetStdout(gomock.Any()).Do(func(w io.Writer) {
-		// simulate process output written before failure is appended
+		// simulate process output
 		_, _ = w.Write([]byte("PROC_OUT\n"))
 	})
 	mockCmd.EXPECT().SetStderr(gomock.Any())
@@ -1766,14 +1766,13 @@ func TestExecutionHandler_RunCommand_AppendsErrorMessageToBody_OnNonZeroExit(t *
 	}
 
 	body := rr.Body.String()
-
-	// may be mixed with earlier output; we only assert that the error message is appended somewhere
 	if !strings.Contains(body, "PROC_OUT") {
 		t.Errorf("expected body to contain process output, got %q", body)
 	}
 
-	if !strings.Contains(body, "Command failed with exit code: 7") {
-		t.Errorf("expected body to contain exit code 7 failure message, got %q", body)
+	exitCodeHeader := rr.Header().Get("X-Exit-Code")
+	if exitCodeHeader != "7" {
+		t.Errorf("expected X-Exit-Code header to be 7, got %q", exitCodeHeader)
 	}
 }
 
@@ -1857,7 +1856,7 @@ func TestExecutionHandler_RunCommand_WriteErrorMessageWriteFails_LogsError(t *te
 		logs := buf.String()
 		mu.Unlock()
 
-		if strings.Contains(logs, "Failed to write error message") {
+		if strings.Contains(logs, "failed to write buffered output") {
 			if !strings.Contains(logs, "write failed") {
 				t.Fatalf("expected logs to contain %q, got %q", "write failed", logs)
 			}
@@ -1866,7 +1865,7 @@ func TestExecutionHandler_RunCommand_WriteErrorMessageWriteFails_LogsError(t *te
 		}
 
 		if time.Now().After(deadline) {
-			t.Fatalf("expected logs to contain %q, got %q", "Failed to write error message", logs)
+			t.Fatalf("expected logs to contain %q, got %q", "failed to write buffered output", logs)
 		}
 
 		time.Sleep(5 * time.Millisecond)
