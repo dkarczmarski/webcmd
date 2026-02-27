@@ -113,10 +113,22 @@ func runCommand(
 	responseWriter http.ResponseWriter,
 ) error {
 	rid := requestIDFromContext(ctx)
-
 	exec := gateexec.New(registry)
+	action := createGateAction(runner, cmd, cmdResult, writer, async)
 
-	action := func(ctx context.Context) (int, <-chan struct{}, error) {
+	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
+
+	return handleCommandResult(rid, exitCode, err, responseWriter)
+}
+
+func createGateAction(
+	runner cmdrunner.Runner,
+	cmd *config.URLCommand,
+	cmdResult *cmdbuilder.Result,
+	writer io.Writer,
+	async bool,
+) gateexec.Action {
+	return func(ctx context.Context) (int, <-chan struct{}, error) {
 		command := cmdResult.Command
 		arguments := cmdResult.Arguments
 
@@ -147,10 +159,6 @@ func runCommand(
 
 		return exitCode, nil, nil
 	}
-
-	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
-
-	return handleCommandResult(rid, exitCode, err, responseWriter)
 }
 
 func waitAsyncAndLog(
