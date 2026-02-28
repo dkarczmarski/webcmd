@@ -1,3 +1,7 @@
+// Package gateexec provides a mechanism for executing actions under the control of call gates.
+//
+// It wraps an Action with gate-based concurrency control, handling gate acquisition,
+// execution, and release (including asynchronous cleanup).
 package gateexec
 
 import (
@@ -9,8 +13,14 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/config"
 )
 
+// ErrPreAction is returned when an error occurs before the actual action starts,
+// such as during gate acquisition or retrieval.
 var ErrPreAction = errors.New("gate executor: pre-action")
 
+// Action represents a function to be executed under gate control.
+// It returns a result code (e.g. process exit code), an optional channel
+// that indicates when the action is fully finished (for async cleanup),
+// and any execution error.
 type Action func(context.Context) (result int, done <-chan struct{}, err error)
 
 type Executor struct {
