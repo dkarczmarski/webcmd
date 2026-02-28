@@ -98,10 +98,6 @@ func translateError(err error) error {
 		return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
 	}
 
-	if errors.Is(err, gateexec.ErrRegistry) {
-		return httpx.NewWebError(err, http.StatusInternalServerError, "Invalid callgate configuration")
-	}
-
 	if errors.Is(err, ErrCommandNotFound) {
 		return httpx.NewWebError(err, http.StatusNotFound, "Command not found")
 	}
@@ -129,7 +125,7 @@ func runCommand(
 
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
 	if err != nil {
-		if errors.Is(err, callgate.ErrBusy) || errors.Is(err, gateexec.ErrRegistry) || errors.Is(err, gateexec.ErrAcquire) {
+		if errors.Is(err, gateexec.ErrPreAction) {
 			return fmt.Errorf("failed to start command: %w", err)
 		}
 

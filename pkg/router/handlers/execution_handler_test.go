@@ -911,8 +911,8 @@ func TestExecutionHandler_UnknownCallGateMode(t *testing.T) {
 	}
 
 	errMsg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(errMsg, "Invalid callgate configuration") {
-		t.Errorf("expected X-Error-Message to contain %q, got %q", "Invalid callgate configuration", errMsg)
+	if !strings.Contains(errMsg, "invalid callgate mode") {
+		t.Errorf("expected X-Error-Message to contain %q, got %q", "invalid callgate mode", errMsg)
 	}
 }
 

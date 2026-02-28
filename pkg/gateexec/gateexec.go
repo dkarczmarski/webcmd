@@ -9,10 +9,7 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/config"
 )
 
-var (
-	ErrRegistry = errors.New("gate executor: registry error")
-	ErrAcquire  = errors.New("gate executor: acquire error")
-)
+var ErrPreAction = errors.New("gate executor: pre-action")
 
 type Action func(context.Context) (result int, done <-chan struct{}, err error)
 
@@ -43,12 +40,12 @@ func (e *Executor) Run(
 
 	gate, err := e.registry.GetOrCreate(group, gateCfg.Mode)
 	if err != nil {
-		return -1, fmt.Errorf("%w: %w", ErrRegistry, err)
+		return -1, fmt.Errorf("%w: %w", ErrPreAction, err)
 	}
 
 	release, err := gate.Acquire(ctx)
 	if err != nil {
-		return -1, fmt.Errorf("%w: %w", ErrAcquire, err)
+		return -1, fmt.Errorf("%w: %w", ErrPreAction, err)
 	}
 
 	exit, done, runErr := action(ctx)
