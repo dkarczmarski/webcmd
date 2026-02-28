@@ -23,11 +23,23 @@ var ErrPreAction = errors.New("gate executor: pre-action")
 // and any execution error.
 type Action func(context.Context) (result int, done <-chan struct{}, err error)
 
-type Executor struct {
-	registry *callgate.Registry
+// Registry provides access to execution gates identified
+// by a group and mode name.
+//
+// Executor uses Registry to obtain or lazily create
+// a Gate instance before running an action.
+//
+// Implementations are responsible for ensuring that
+// repeated calls with the same group return the same Gate.
+type Registry interface {
+	GetOrCreate(group string, name string) (callgate.CallGate, error)
 }
 
-func New(registry *callgate.Registry) *Executor {
+type Executor struct {
+	registry Registry
+}
+
+func New(registry Registry) *Executor {
 	return &Executor{registry: registry}
 }
 
@@ -37,7 +49,7 @@ func (e *Executor) Run(
 	defaultGroup string,
 	action Action,
 ) (int, error) {
-	if gateCfg == nil || e.registry == nil {
+	if gateCfg == nil {
 		exit, _, err := action(ctx)
 
 		return exit, err
