@@ -1348,8 +1348,12 @@ func TestExecutionHandler_TerminateOnCancel_NoGrace_SendsSIGKILL(t *testing.T) {
 	}
 
 	errMsg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(errMsg, "context canceled") {
-		t.Errorf("expected X-Error-Message header to contain %q, got %q", "context canceled", errMsg)
+	if errMsg == "" {
+		t.Fatalf("expected X-Error-Message header to be set")
+	}
+
+	if !strings.Contains(errMsg, "wait error") {
+		t.Errorf("expected X-Error-Message header to contain %q, got %q", "wait error", errMsg)
 	}
 }
 
@@ -1471,7 +1475,7 @@ func TestExecutionHandler_TerminateOnCancel_WithGrace_ProcessEndsBeforeTimer_Sen
 	}
 }
 
-func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *testing.T) {
+func TestExecutionHandler_DeadlineExceeded_DoesNotOverrideWaitResult(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -1484,7 +1488,6 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 	runErr := exec.Command("sh", "-c", "exit 7").Run()
 
 	var exitErr *exec.ExitError
-
 	if !errors.As(runErr, &exitErr) {
 		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
 	}
@@ -1507,6 +1510,7 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 	// Prevent signalProcessGroup from calling runner.Kill.
 	mockCmd.EXPECT().Pid().Return(0).AnyTimes()
 
+	// Wait returns exit error (exit code 7).
 	mockCmd.EXPECT().Wait().Return(exitErr)
 	mockCmd.EXPECT().ProcessState().Return(nil).AnyTimes()
 
@@ -1528,19 +1532,17 @@ func TestExecutionHandler_DeadlineExceeded_PrioritizesCtxErrOverExitError(t *tes
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
+	// Wait() result wins over context cancellation, so we should report exit code 7.
 	exitCodeHeader := rr.Header().Get("X-Exit-Code")
-	if exitCodeHeader != "" {
-		t.Errorf("expected X-Exit-Code header to be empty, got %q", exitCodeHeader)
+	if exitCodeHeader != "7" {
+		t.Errorf("expected X-Exit-Code header to be %q, got %q", "7", exitCodeHeader)
 	}
 
+	// Since non-zero exit is treated as a normal result (exit code + nil error),
+	// there should be no context-related error message.
 	errMsg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(errMsg, "context deadline exceeded") {
-		t.Errorf("expected X-Error-Message header to contain %q, got %q", "context deadline exceeded", errMsg)
-	}
-
-	// Make sure it did not report the process exit code (7) as primary.
-	if exitCodeHeader == "7" {
-		t.Errorf("did not expect exit code 7 to be reported, got %q", exitCodeHeader)
+	if errMsg != "" {
+		t.Errorf("expected X-Error-Message header to be empty, got %q", errMsg)
 	}
 }
 

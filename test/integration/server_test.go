@@ -194,8 +194,10 @@ func TestServerIntegration(t *testing.T) {
 		}
 
 		errMsg := rec.Header().Get("X-Error-Message")
-		if !strings.Contains(errMsg, "context deadline exceeded") {
-			t.Errorf("Expected timeout error message in X-Error-Message header, got %q", errMsg)
+		expectedMsg := "process wait failed: signal: killed"
+
+		if errMsg != expectedMsg {
+			t.Errorf("Expected timeout error message in X-Error-Message header to be %q, got %q", expectedMsg, errMsg)
 		}
 	})
 
