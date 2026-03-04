@@ -28,6 +28,8 @@ var (
 	ErrProcessGroupSignal = errors.New("failed to send signal to process group")
 )
 
+type SignalObserver func(pgid int, sig syscall.Signal)
+
 type Process struct {
 	// cmd is the underlying command abstraction.
 	cmd cmdrunner.Command
@@ -38,6 +40,14 @@ type Process struct {
 	// timeout defines how long to wait after SIGTERM before sending SIGKILL.
 	// If nil, the process group is killed immediately with SIGKILL.
 	timeout *time.Duration
+
+	onSignal SignalObserver
+}
+
+type Option func(*Process)
+
+func WithSignalObserver(obs SignalObserver) Option {
+	return func(p *Process) { p.onSignal = obs }
 }
 
 func StartProcess(
@@ -46,6 +56,7 @@ func StartProcess(
 	args []string,
 	writer io.Writer,
 	graceTimeout *time.Duration,
+	opts ...Option,
 ) (*Process, error) {
 	cmd := runner.Command(command, args...)
 
@@ -65,11 +76,18 @@ func StartProcess(
 		return nil, fmt.Errorf("%w: %w", ErrStartCommand, err)
 	}
 
-	return &Process{
+	//nolint:exhaustruct
+	proc := &Process{
 		cmd:     cmd,
 		runner:  runner,
 		timeout: graceTimeout,
-	}, nil
+	}
+
+	for _, opt := range opts {
+		opt(proc)
+	}
+
+	return proc, nil
 }
 
 func (p *Process) WaitSync(ctx context.Context) (int, error) {
@@ -174,6 +192,10 @@ func (p *Process) signalProcessGroup(pid int, sig syscall.Signal) error {
 	// Negative PID means: send signal to the process group
 	// whose PGID equals the absolute value of pid.
 	pgid := -pid
+
+	if p.onSignal != nil {
+		p.onSignal(pgid, sig)
+	}
 
 	if err := p.runner.Kill(pgid, sig); err != nil {
 		return fmt.Errorf(
