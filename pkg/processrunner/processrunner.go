@@ -220,3 +220,23 @@ func (p *Process) exitFromWaitError(err error) (int, error) {
 	// Any other error from Wait() is treated as an infrastructure/runtime error.
 	return -1, err
 }
+
+// Pid returns PID of the underlying process (0 if not started / unknown).
+func (p *Process) Pid() int {
+	if p == nil || p.cmd == nil {
+		return 0
+	}
+
+	return p.cmd.Pid()
+}
+
+// ProcessGroupID returns PGID (on Unix). On error returns 0 and error.
+func (p *Process) ProcessGroupID() (int, error) {
+	pid := p.Pid()
+	if pid <= 0 {
+		return 0, ErrInvalidPID
+	}
+
+	//nolint: wrapcheck
+	return syscall.Getpgid(pid)
+}
