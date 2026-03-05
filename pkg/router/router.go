@@ -9,11 +9,13 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
+	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 	"github.com/dkarczmarski/webcmd/pkg/router/handlers"
 )
 
 // New creates and initializes a new http.ServeMux instance with the given configuration.
 func New(configuration *config.Config) *http.ServeMux {
+	processRunner := processrunner.New(&cmdrunner.RealRunner{})
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 	mux := http.NewServeMux()
 	mux.Handle("/", httpx.ToHandler(
@@ -26,7 +28,7 @@ func New(configuration *config.Config) *http.ServeMux {
 				handlers.AuthorizationMiddleware(),
 				handlers.TimeoutMiddleware(),
 			),
-			handlers.ExecutionHandler(&cmdrunner.RealRunner{}, registry),
+			handlers.ExecutionHandler(processRunner, registry),
 		)))
 
 	return mux

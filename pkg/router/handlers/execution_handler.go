@@ -17,7 +17,6 @@ import (
 
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
-	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
@@ -30,6 +29,19 @@ var (
 	ErrInvalidJSONBody       = errors.New("invalid JSON body")
 )
 
+// ProcessStarter abstracts starting a process for a command execution.
+// It is implemented by processrunner.ProcessRunner, which binds cmdrunner.Runner internally.
+// This keeps the handler decoupled from cmdrunner.Runner and makes testing easier.
+type ProcessStarter interface {
+	StartProcess(
+		command string,
+		args []string,
+		writer io.Writer,
+		graceTimeout *time.Duration,
+		opts ...processrunner.Option,
+	) (*processrunner.Process, error)
+}
+
 // ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
 // request context.
 // It builds the command from the configured template and request parameters, prepares the response output,
@@ -40,9 +52,15 @@ var (
 // discarding output).
 // When execution fails (non-zero exit code or error), it logs the failure and writes an error message to the
 // response body.
-func ExecutionHandler(runner cmdrunner.Runner, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn
+func ExecutionHandler(pr *processrunner.ProcessRunner, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn
+	return ExecutionHandlerWithProcessRunner(pr, registry)
+}
+
+// ExecutionHandlerWithProcessRunner is a test-friendly variant of ExecutionHandler that accepts an abstract
+// ProcessStarter (implemented by processrunner.ProcessRunner).
+func ExecutionHandlerWithProcessRunner(starter ProcessStarter, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn,lll
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		err := executionHandler(responseWriter, request, runner, registry)
+		err := executionHandler(responseWriter, request, starter, registry)
 		if err != nil {
 			return translateError(err)
 		}
@@ -54,7 +72,7 @@ func ExecutionHandler(runner cmdrunner.Runner, registry *callgate.Registry) http
 func executionHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 ) error {
 	rid := requestIDFromContext(request.Context())
@@ -77,7 +95,7 @@ func executionHandler(
 
 	return prepareOutputAndRunCommand(
 		request.Context(),
-		runner,
+		starter,
 		registry,
 		cmd,
 		cmdResult,
@@ -111,7 +129,7 @@ func translateError(err error) error {
 
 func runCommand(
 	ctx context.Context,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
@@ -121,7 +139,7 @@ func runCommand(
 ) error {
 	rid := requestIDFromContext(ctx)
 	exec := gateexec.New(registry)
-	action := createGateAction(runner, cmd, cmdResult, writer, async)
+	action := createGateAction(starter, cmd, cmdResult, writer, async)
 
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
 	if err != nil {
@@ -146,7 +164,7 @@ func runCommand(
 }
 
 func createGateAction(
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	writer io.Writer,
@@ -159,7 +177,7 @@ func createGateAction(
 		rid := requestIDFromContext(ctx)
 		log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
 
-		proc, err := startCommandProcess(runner, command, arguments, writer, cmd.GraceTerminationTimeout)
+		proc, err := startCommandProcess(starter, command, arguments, writer, cmd.GraceTerminationTimeout)
 		if err != nil {
 			return -1, nil, err
 		}
@@ -216,13 +234,13 @@ func waitAsyncAndLog(
 }
 
 func startCommandProcess(
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	command string,
 	arguments []string,
 	writer io.Writer,
 	graceTerminationTimeout *time.Duration,
 ) (*processrunner.Process, error) {
-	proc, err := processrunner.StartProcess(runner, command, arguments, writer, graceTerminationTimeout)
+	proc, err := starter.StartProcess(command, arguments, writer, graceTerminationTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start process: %w", err)
 	}
@@ -282,7 +300,7 @@ func buildCommand(
 
 func prepareOutputAndRunCommand(
 	ctx context.Context,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
@@ -292,11 +310,11 @@ func prepareOutputAndRunCommand(
 
 	switch outputType {
 	case "none":
-		return prepareOutputAndRunAsyncCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunAsyncCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
 	case "stream":
-		return prepareOutputAndRunStreamCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunStreamCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
 	case "", "text":
-		return prepareOutputAndRunSyncCommand(ctx, runner, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunSyncCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
 	default:
 		return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType)
 	}
@@ -304,7 +322,7 @@ func prepareOutputAndRunCommand(
 
 func prepareOutputAndRunAsyncCommand(
 	ctx context.Context,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
@@ -312,7 +330,7 @@ func prepareOutputAndRunAsyncCommand(
 ) error {
 	return runCommand(
 		ctx,
-		runner,
+		starter,
 		registry,
 		cmd,
 		cmdResult,
@@ -324,7 +342,7 @@ func prepareOutputAndRunAsyncCommand(
 
 func prepareOutputAndRunStreamCommand(
 	ctx context.Context,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
@@ -347,7 +365,7 @@ func prepareOutputAndRunStreamCommand(
 
 	return runCommand(
 		ctx,
-		runner,
+		starter,
 		registry,
 		cmd,
 		cmdResult,
@@ -359,7 +377,7 @@ func prepareOutputAndRunStreamCommand(
 
 func prepareOutputAndRunSyncCommand(
 	ctx context.Context,
-	runner cmdrunner.Runner,
+	starter ProcessStarter,
 	registry *callgate.Registry,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
@@ -371,7 +389,7 @@ func prepareOutputAndRunSyncCommand(
 
 	err := runCommand(
 		ctx,
-		runner,
+		starter,
 		registry,
 		cmd,
 		cmdResult,
