@@ -50,6 +50,28 @@ func WithSignalObserver(obs SignalObserver) Option {
 	return func(p *Process) { p.onSignal = obs }
 }
 
+// ProcessRunner is a small convenience wrapper that binds cmdrunner.Runner,
+// so callers don't have to pass it to StartProcess each time.
+// This is useful for dependency injection (e.g. in handlers/tests).
+type ProcessRunner struct {
+	runner cmdrunner.Runner
+}
+
+func New(runner cmdrunner.Runner) *ProcessRunner {
+	return &ProcessRunner{runner: runner}
+}
+
+// StartProcess starts a new process using the runner held by ProcessRunner.
+func (r *ProcessRunner) StartProcess(
+	command string,
+	args []string,
+	writer io.Writer,
+	graceTimeout *time.Duration,
+	opts ...Option,
+) (*Process, error) {
+	return StartProcess(r.runner, command, args, writer, graceTimeout, opts...)
+}
+
 func StartProcess(
 	runner cmdrunner.Runner,
 	command string,
