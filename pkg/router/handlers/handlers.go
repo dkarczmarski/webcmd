@@ -20,16 +20,16 @@ var (
 	ErrBadConfiguration      = errors.New("bad configuration")
 )
 
-type contextKey string
+type ContextKey string
 
 // AuthNameKey is the context key used to store and retrieve the authorization name.
-const AuthNameKey contextKey = "authName"
+const AuthNameKey ContextKey = "authName"
 
 // URLCommandKey is the context key used to store and retrieve the URL command.
-const URLCommandKey contextKey = "urlCommand"
+const URLCommandKey ContextKey = "urlCommand"
 
 // RequestIDKey is the context key used to store and retrieve the request ID.
-const RequestIDKey contextKey = "requestID"
+const RequestIDKey ContextKey = "requestID"
 
 // RequestIDMiddleware creates a new Middleware that extracts the request ID from the X-Request-Id header,
 // or generates a new one if not present, and adds it to the request context under RequestIDKey.

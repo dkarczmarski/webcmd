@@ -60,6 +60,9 @@ func (c *realCommand) Pid() int {
 	return c.Cmd.Process.Pid
 }
 
+// compile-time interface check.
+var _ Command = (*realCommand)(nil)
+
 // RealRunner is a real implementation of the Runner interface.
 type RealRunner struct{}
 
@@ -68,8 +71,13 @@ func (r *RealRunner) Command(name string, arg ...string) Command {
 	return &realCommand{exec.Command(name, arg...)}
 }
 
-// Kill sends a signal to a process group.
+// Kill sends a signal to a process or process group.
+// If pid > 0, the signal is sent to the process with that PID.
+// If pid < 0, the signal is sent to the process group with ID = -pid.
 func (r *RealRunner) Kill(pid int, sig syscall.Signal) error {
 	//nolint:wrapcheck
-	return syscall.Kill(-pid, sig)
+	return syscall.Kill(pid, sig)
 }
+
+// compile-time interface check.
+var _ Runner = (*RealRunner)(nil)

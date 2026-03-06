@@ -1,3 +1,5 @@
+server:
+  withErrorHeader: true
 authorization:
   - name: auth-name1
     key: ABC111
@@ -52,3 +54,99 @@ urlCommands:
       /bin/echo
       no-output
     outputType: none
+
+
+  - url: GET /cmd/query-first
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.url.a}}
+    timeout: 5s
+
+  - url: GET /cmd/headers
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.headers.X_Test_Header}} {{.headers.X_Test}}
+    timeout: 5s
+
+  - url: POST /cmd/echo-json-disabled
+    commandTemplate: |
+      /bin/echo
+      -n
+      {{.body.text}} {{index .body "json"}}
+    params:
+      bodyAsJson: false
+    timeout: 5s
+
+  - url: GET /cmd/bad-output
+    commandTemplate: |
+      /bin/echo
+      hello
+    outputType: invalid
+    timeout: 5s
+
+  - url: GET /cmd/bad-template
+    commandTemplate: |
+      /bin/echo
+      {{.url.name
+    timeout: 5s
+
+  # CallGate: explicit group, same URL, should return 429 on concurrency
+  - url: GET /cmd/gated-sleep
+    commandTemplate: |
+      /bin/sleep
+      1
+    timeout: 5s
+    callGate:
+      mode: single
+      groupName: test-group
+
+  # CallGate: implicit group name (omit groupName) => different URLs should not block each other
+  - url: GET /cmd/gated-implicit-a
+    commandTemplate: |
+      /bin/sleep
+      1
+    timeout: 5s
+    callGate:
+      mode: single
+
+  - url: GET /cmd/gated-implicit-b
+    commandTemplate: |
+      /bin/echo
+      -n
+      ok
+    timeout: 5s
+    callGate:
+      mode: single
+
+  # CallGate: empty groupName shared across URLs => should block
+  - url: GET /cmd/gated-empty-a
+    commandTemplate: |
+      /bin/sleep
+      1
+    timeout: 5s
+    callGate:
+      mode: single
+      groupName: ""
+
+  - url: GET /cmd/gated-empty-b
+    commandTemplate: |
+      /bin/echo
+      -n
+      ok
+    timeout: 5s
+    callGate:
+      mode: single
+      groupName: ""
+
+  # CallGate: invalid mode => 500
+  - url: GET /cmd/gated-invalid-mode
+    commandTemplate: |
+      /bin/echo
+      -n
+      ok
+    timeout: 5s
+    callGate:
+      mode: invalid-mode
+      groupName: test-group

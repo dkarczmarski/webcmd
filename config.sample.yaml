@@ -1,5 +1,6 @@
 server:
   # address: "127.0.0.1:8080"
+  withErrorHeader: true
   shutdownGracePeriod: 5s
 authorization:
   - name: auth-name1
