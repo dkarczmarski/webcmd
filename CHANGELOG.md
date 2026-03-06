@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.0
+
+### Changed
+- **Breaking Change**: Renamed `outputType` to `executionMode` in `URLCommand` configuration.
+    - The new field `executionMode` accepts three values:
+        - `buffered`: Run command synchronously and return full output once it finishes (replaces former `text`).
+        - `stream`: Run command synchronously and stream output in real-time.
+        - `async`: Start command and return immediately without waiting for it to finish (replaces former `none`).
+    - No backward compatibility for `outputType`.
+
 ## v0.8.0
 
 ### Added
