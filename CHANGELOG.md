@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.0
+
+### Added
+- Standardized HTTP status codes for command execution results:
+    - **200 OK**: Returned when a command starts successfully (even if it later exits with a non-zero code).
+    - **429 Too Many Requests**: Returned when the call gate is busy.
+    - **400 Bad Request**: Returned for invalid JSON in the request body (when `bodyAsJson` is enabled).
+    - **404 Not Found**: Returned when the command or endpoint is missing.
+    - **500 Internal Server Error**: Returned for internal or configuration failures before the command starts.
+- Improved command execution reporting via response headers:
+    - `X-Success`: Indicates if the process exited with code 0 (`"true"`/`"false"`).
+    - `X-Exit-Code`: Provides the process exit code (if available).
+    - `X-Error-Message`: Contains the execution error message (when `withErrorHeader` is enabled).
+- Added `withErrorHeader` configuration option to the `server` section to control the inclusion of execution error messages in HTTP response headers.
+
 ## v0.7.0
 
 ### Added
