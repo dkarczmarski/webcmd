@@ -46,10 +46,71 @@ type GateExecutor interface {
 	Run(ctx context.Context, gateConfig *config.CallGateConfig, key string, action gateexec.Action) (int, error)
 }
 
-// ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
-// request context.
+// ExecutionHandler returns a WebHandler that executes the command associated with
+// the URLCommand stored in the request context.
 //
-// This variant keeps construction simple for production wiring: it accepts the concrete
+// The handler performs the following steps:
+//
+//   - reads the URLCommand from request context,
+//   - extracts request parameters (query, headers, body text, optional body JSON),
+//   - renders the configured command template,
+//   - selects output mode ("text", "stream", or "none"),
+//   - executes the command through the provided GateExecutor and ProcessStarter.
+//
+// Output modes:
+//
+//   - "text" (default):
+//     command output is buffered and written to the response after the process exits,
+//   - "stream":
+//     command output is forwarded to the response as it is produced;
+//     requires http.Flusher support from the ResponseWriter,
+//   - "none":
+//     command is started asynchronously and output is discarded.
+//
+// HTTP status code behavior:
+//
+//   - 200 OK
+//     returned when the command starts successfully, regardless of whether the command
+//     later exits with code 0 or non-zero, or fails while waiting/executing.
+//     In other words, runtime/process execution failures are reported via response
+//     headers, not via non-200 status codes.
+//
+//     In this case the handler sets:
+//
+//   - X-Success: "true" if exit code == 0, otherwise "false"
+//
+//   - X-Exit-Code: process exit code if available
+//
+//   - X-Error-Message: empty on success, otherwise execution error message
+//
+//   - 429 Too Many Requests
+//     returned when command execution cannot start because the call gate rejects the
+//     request as busy (callgate.ErrBusy).
+//
+//   - 404 Not Found
+//     returned when URLCommand is missing from request context.
+//
+//   - 400 Bad Request
+//     returned when bodyAsJson is enabled but the request body is not a valid JSON object.
+//
+//   - 500 Internal Server Error
+//     returned when the command cannot be prepared or started at all, for example:
+//
+//   - streaming was requested but ResponseWriter does not support flushing,
+//
+//   - command template rendering/building failed,
+//
+//   - gate/pre-action setup failed before the process was started,
+//
+//   - handler configuration is invalid (for example unknown output type).
+//
+// Important distinction:
+//
+// A command that starts successfully but later fails is still treated as an HTTP-level
+// success and therefore returns 200 OK. Such failures are exposed through X-Success,
+// X-Exit-Code and X-Error-Message headers.
+//
+// This variant keeps construction simple for production wiring: it accepts concrete
 // implementations that already bind their dependencies (process runner and gate executor).
 func ExecutionHandler(pr *processrunner.ProcessRunner, exec GateExecutor) httpx.WebHandler { //nolint:ireturn
 	return ExecutionHandlerWithDeps(pr, exec)
