@@ -1,7 +1,5 @@
 package handlers
 
-//go:generate go run go.uber.org/mock/mockgen -typed -destination=./internal/mocks/mock_cmdrunner.go -package=mocks github.com/dkarczmarski/webcmd/pkg/cmdrunner Runner,Command
-
 import (
 	"bytes"
 	"context"
