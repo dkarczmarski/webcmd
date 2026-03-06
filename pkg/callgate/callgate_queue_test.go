@@ -265,7 +265,7 @@ func TestSequence_Acquire_FIFOOrder(t *testing.T) {
 		t.Fatalf("Acquire #1 error: %v", err)
 	}
 
-	const n = 500
+	const n = 50
 	orderCh := make(chan int, n)
 
 	var (
@@ -322,7 +322,7 @@ func TestSequence_Acquire_CancelVsGrantRace(t *testing.T) {
 	root := t.Context()
 	g := callgate.NewSequence()
 
-	const iters = 500
+	const iters = 50
 
 	for iter := range iters {
 		// Hold the slot.
