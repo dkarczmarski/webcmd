@@ -172,7 +172,7 @@ urlCommands:
       logs
       -f
       my-container
-    outputType: stream
+    executionMode: stream
 ```
 
 Call the endpoint:
@@ -200,7 +200,7 @@ urlCommands:
   - url: POST /maintenance/backup
     commandTemplate: |
       /usr/local/bin/backup.sh
-    outputType: none
+    executionMode: async
     timeout: 1h
 ```
 
@@ -332,11 +332,11 @@ Each entry contains:
 * `graceTerminationTimeout` *(optional)*
   The time to wait for the process to exit gracefully after sending `SIGTERM` when the context is cancelled (e.g., client disconnects or timeout occurs) before sending `SIGKILL`. Format: [Go Duration](https://pkg.go.dev/time#ParseDuration). Default: no grace period (sends `SIGKILL` immediately).
 
-* `outputType` *(optional)*
-  Determines how the command output is returned:
-  - `text`: (default) returns the full output once the command finishes.
-  - `stream`: returns the output in real-time as it is produced by the command.
-  - `none`: executes the command asynchronously in the background. The HTTP response is sent immediately after the process starts, and any output is discarded. Note that the optional `timeout` is still respected for background processes.
+* `executionMode` *(optional)*
+  Determines how the command is executed and how its output is returned:
+  - `buffered`: (default) run command synchronously and return the full output once it finishes.
+  - `stream`: run command synchronously and stream output in real-time as it is produced.
+  - `async`: start command and return immediately without waiting for it to finish. Any output is discarded. Note that the optional `timeout` is still respected for background processes.
 
 * `callGate` *(optional)*
   Controls the concurrency of command execution. It allows you to limit how many instances of a command (or a group of commands) can run simultaneously.

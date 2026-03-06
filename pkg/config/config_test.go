@@ -54,8 +54,8 @@ func TestLoadConfig(t *testing.T) {
 						Params: config.ParamsConfig{
 							BodyAsJSON: ptrBool(true),
 						},
-						Timeout:    ptrDuration(5 * time.Second),
-						OutputType: "text",
+						Timeout:       ptrDuration(5 * time.Second),
+						ExecutionMode: "buffered",
 					},
 				},
 				{
@@ -358,6 +358,62 @@ urlCommands:
 
 	if *cmd2.CallGate.GroupName != "" {
 		t.Errorf("expected GroupName to be empty string, got %q", *cmd2.CallGate.GroupName)
+	}
+}
+
+func TestExecutionMode(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name         string
+		yaml         string
+		expectedMode string
+	}{
+		{
+			name: "explicit executionMode buffered",
+			yaml: `
+urlCommands:
+  - url: POST /test
+    commandTemplate: /bin/echo
+    executionMode: buffered
+`,
+			expectedMode: "buffered",
+		},
+		{
+			name: "explicit executionMode stream",
+			yaml: `
+urlCommands:
+  - url: POST /test
+    commandTemplate: /bin/echo
+    executionMode: stream
+`,
+			expectedMode: "stream",
+		},
+		{
+			name: "explicit executionMode async",
+			yaml: `
+urlCommands:
+  - url: POST /test
+    commandTemplate: /bin/echo
+    executionMode: async
+`,
+			expectedMode: "async",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := config.LoadConfigFromString(tc.yaml)
+			if err != nil {
+				t.Fatalf("failed to load config: %v", err)
+			}
+
+			if cfg.URLCommands[0].ExecutionMode != tc.expectedMode {
+				t.Errorf("expected ExecutionMode %q, got %q", tc.expectedMode, cfg.URLCommands[0].ExecutionMode)
+			}
+		})
 	}
 }
 

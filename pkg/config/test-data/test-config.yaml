@@ -19,7 +19,7 @@ urlCommands:
     params:
       bodyAsJson: true
     timeout: 5s
-    outputType: text
+    executionMode: buffered
   - url: POST /cmd/sleep
     commandTemplate: |
       /usr/bin/sleep
