@@ -228,6 +228,35 @@ The `commandTemplate` uses Go's `text/template` syntax to inject data from the H
   Header names are normalized by replacing hyphens (`-`) with underscores (`_`).
   Example: `{{.headers.X_Api_Key}}` or `{{.headers.User_Agent}}` .
 
+## HTTP Response and Error Handling
+
+The server returns different HTTP status codes depending on the outcome of the request and the command execution:
+
+- **200 OK**
+  Returned when the command starts successfully, regardless of whether the command later exits with code 0 or non-zero, or fails while executing.
+  In this case, the handler sets the following response headers:
+  - `X-Success`: `"true"` if the process exit code is 0, otherwise `"false"`.
+  - `X-Exit-Code`: The process exit code (if available).
+  - `X-Error-Message`: Empty on success, or contains the execution error message if the command fails (only if `server.withErrorHeader` is enabled in the configuration).
+
+- **429 Too Many Requests**
+  Returned when command execution cannot start because the call gate rejects the request as busy (e.g., when `mode: single` is used).
+
+- **404 Not Found**
+  Returned when the URL command is missing or the endpoint is not configured.
+
+- **400 Bad Request**
+  Returned when `bodyAsJson` is enabled but the request body is not a valid JSON object.
+
+- **500 Internal Server Error**
+  Returned when the command cannot be prepared or started at all, for example:
+  - Streaming was requested but the `ResponseWriter` does not support flushing.
+  - Command template rendering/building failed.
+  - Gate or pre-action setup failed before the process was started.
+  - Handler configuration is invalid.
+
+**Important distinction:** A command that starts successfully but later fails (e.g., returns a non-zero exit code) is still treated as an HTTP-level success and returns **200 OK**. Detailed information about the process outcome is available in the `X-Success` and `X-Exit-Code` headers. The `X-Error-Message` header is also provided if `server.withErrorHeader` is set to `true` in the configuration.
+
 ## Configuration (`config.yaml`)
 
 ### `server`
@@ -239,6 +268,8 @@ The `commandTemplate` uses Go's `text/template` syntax to inject data from the H
     * `"localhost:8080"`
 
 * `shutdownGracePeriod` *(optional)* - the time to wait for active requests to finish before the server shuts down (e.g., `5s`, `30s`). Format: [Go Duration](https://pkg.go.dev/time#ParseDuration). Default: `5s`.
+
+* `withErrorHeader` *(optional)* - if set to `true`, the `X-Error-Message` header will be included in the HTTP response when a command execution fails. Default: `false`.
 
 * `https` *(optional)* - HTTPS configuration:
     * `enabled` - enable or disable HTTPS. Default: `false`.
