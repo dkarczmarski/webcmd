@@ -42,25 +42,26 @@ type ProcessStarter interface {
 	) (*processrunner.Process, error)
 }
 
-// ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
-// request context.
-// It builds the command from the configured template and request parameters, prepares the response output,
-// and runs the command using the provided runner.
-// If CallGate is configured for the URLCommand, it uses the shared registry to obtain a gate for the group and
-// applies the selected gate mode (e.g. single/sequence) to limit concurrent executions.
-// The handler supports output modes: "text" (default), "stream" (flushes as data arrives), and "none" (async,
-// discarding output).
-// When execution fails (non-zero exit code or error), it logs the failure and writes an error message to the
-// response body.
-func ExecutionHandler(pr *processrunner.ProcessRunner, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn
-	return ExecutionHandlerWithProcessRunner(pr, registry)
+// GateExecutor abstracts gateexec behavior so handlers don't need callgate.Registry.
+// A concrete implementation can internally bind the registry and delegate to gateexec.
+type GateExecutor interface {
+	Run(ctx context.Context, gateConfig *config.CallGateConfig, key string, action gateexec.Action) (int, error)
 }
 
-// ExecutionHandlerWithProcessRunner is a test-friendly variant of ExecutionHandler that accepts an abstract
-// ProcessStarter (implemented by processrunner.ProcessRunner).
-func ExecutionHandlerWithProcessRunner(starter ProcessStarter, registry *callgate.Registry) httpx.WebHandler { //nolint:ireturn,lll
+// ExecutionHandler returns a WebHandler that executes the command associated with the URLCommand stored in the
+// request context.
+//
+// This variant keeps construction simple for production wiring: it accepts the concrete
+// implementations that already bind their dependencies (process runner and gate executor).
+func ExecutionHandler(pr *processrunner.ProcessRunner, exec GateExecutor) httpx.WebHandler { //nolint:ireturn
+	return ExecutionHandlerWithDeps(pr, exec)
+}
+
+// ExecutionHandlerWithDeps is a test-friendly variant of ExecutionHandler that accepts abstractions
+// for starting processes and executing under a gate.
+func ExecutionHandlerWithDeps(starter ProcessStarter, exec GateExecutor) httpx.WebHandler { //nolint:ireturn
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		err := executionHandler(responseWriter, request, starter, registry)
+		err := executionHandler(responseWriter, request, starter, exec)
 		if err != nil {
 			return translateError(err)
 		}
@@ -73,7 +74,7 @@ func executionHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 ) error {
 	rid := requestIDFromContext(request.Context())
 	log.Printf("[INFO] rid=%s Executing command for: %s %s", rid, request.Method, request.URL.Path)
@@ -96,7 +97,7 @@ func executionHandler(
 	return prepareOutputAndRunCommand(
 		request.Context(),
 		starter,
-		registry,
+		exec,
 		cmd,
 		cmdResult,
 		responseWriter,
@@ -130,7 +131,7 @@ func translateError(err error) error {
 func runCommand(
 	ctx context.Context,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	writer io.Writer,
@@ -138,7 +139,6 @@ func runCommand(
 	responseWriter http.ResponseWriter,
 ) error {
 	rid := requestIDFromContext(ctx)
-	exec := gateexec.New(registry)
 	action := createGateAction(starter, cmd, cmdResult, writer, async)
 
 	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
@@ -301,7 +301,7 @@ func buildCommand(
 func prepareOutputAndRunCommand(
 	ctx context.Context,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -310,11 +310,11 @@ func prepareOutputAndRunCommand(
 
 	switch outputType {
 	case "none":
-		return prepareOutputAndRunAsyncCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunAsyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
 	case "stream":
-		return prepareOutputAndRunStreamCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunStreamCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
 	case "", "text":
-		return prepareOutputAndRunSyncCommand(ctx, starter, registry, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunSyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
 	default:
 		return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType)
 	}
@@ -323,7 +323,7 @@ func prepareOutputAndRunCommand(
 func prepareOutputAndRunAsyncCommand(
 	ctx context.Context,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -331,7 +331,7 @@ func prepareOutputAndRunAsyncCommand(
 	return runCommand(
 		ctx,
 		starter,
-		registry,
+		exec,
 		cmd,
 		cmdResult,
 		io.Discard,
@@ -343,7 +343,7 @@ func prepareOutputAndRunAsyncCommand(
 func prepareOutputAndRunStreamCommand(
 	ctx context.Context,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -366,7 +366,7 @@ func prepareOutputAndRunStreamCommand(
 	return runCommand(
 		ctx,
 		starter,
-		registry,
+		exec,
 		cmd,
 		cmdResult,
 		writer,
@@ -378,7 +378,7 @@ func prepareOutputAndRunStreamCommand(
 func prepareOutputAndRunSyncCommand(
 	ctx context.Context,
 	starter ProcessStarter,
-	registry *callgate.Registry,
+	exec GateExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -390,7 +390,7 @@ func prepareOutputAndRunSyncCommand(
 	err := runCommand(
 		ctx,
 		starter,
-		registry,
+		exec,
 		cmd,
 		cmdResult,
 		&buf,

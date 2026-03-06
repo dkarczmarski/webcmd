@@ -8,6 +8,7 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/cmdrunner"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 	"github.com/dkarczmarski/webcmd/pkg/router/handlers"
@@ -17,7 +18,9 @@ import (
 func New(configuration *config.Config) *http.ServeMux {
 	processRunner := processrunner.New(&cmdrunner.RealRunner{})
 	registry := callgate.NewRegistry(callgate.WithDefaults())
+	exec := gateexec.New(registry)
 	mux := http.NewServeMux()
+
 	mux.Handle("/", httpx.ToHandler(
 		httpx.ErrorSink(log.Default(), configuration.Server.WithErrorHeader),
 		httpx.WithMiddleware(
@@ -28,7 +31,7 @@ func New(configuration *config.Config) *http.ServeMux {
 				handlers.AuthorizationMiddleware(),
 				handlers.TimeoutMiddleware(),
 			),
-			handlers.ExecutionHandler(processRunner, registry),
+			handlers.ExecutionHandler(processRunner, exec),
 		)))
 
 	return mux
