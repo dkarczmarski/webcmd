@@ -386,9 +386,18 @@ func newTestServer(t *testing.T, h http.Handler, grace time.Duration) *testSrv {
 
 	sigCh := make(chan os.Signal, 2)
 
+	mux := http.NewServeMux()
+	mux.Handle("/",
+		h,
+	)
+	mux.HandleFunc("/__ready", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
 	allOpts := []gracehttp.Option{
 		gracehttp.WithListener(ln),
-		gracehttp.WithHandler(h),
+		gracehttp.WithHandler(mux),
 		gracehttp.WithSignalChan(sigCh),
 		gracehttp.WithGrace(grace),
 	}
@@ -413,7 +422,7 @@ func newTestServer(t *testing.T, h http.Handler, grace time.Duration) *testSrv {
 		ts.runErrC <- srv.Run()
 	}()
 
-	waitForServerReady(t, srv.Addr(), testReadyTimeout)
+	waitForServerReady(t, ts.client, ts.url, testReadyTimeout)
 
 	t.Cleanup(func() {
 		// Best-effort shutdown if still running
@@ -423,23 +432,29 @@ func newTestServer(t *testing.T, h http.Handler, grace time.Duration) *testSrv {
 	return ts
 }
 
-func waitForServerReady(t *testing.T, addr string, timeout time.Duration) {
+func waitForServerReady(t *testing.T, client *http.Client, url string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url+"/__ready", nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
 
+		resp, err := client.Do(req)
 		if err == nil {
-			_ = conn.Close()
+			_ = resp.Body.Close()
 
-			return
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
 		}
 
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	t.Fatalf("server not ready on %s within %s", addr, timeout)
+	t.Fatalf("server not ready on %s within %s", url, timeout)
 }
 
 func requireRunEnds(t *testing.T, ch <-chan error, within time.Duration) error {
