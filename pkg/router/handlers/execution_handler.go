@@ -365,17 +365,17 @@ func prepareOutputAndRunCommand(
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
-	outputType := cmd.CommandConfig.OutputType
+	executionMode := cmd.CommandConfig.ExecutionMode
 
-	switch outputType {
-	case "none":
+	switch executionMode {
+	case "async":
 		return prepareOutputAndRunAsyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
 	case "stream":
 		return prepareOutputAndRunStreamCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
-	case "", "text":
+	case "", "buffered":
 		return prepareOutputAndRunSyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
 	default:
-		return fmt.Errorf("%w: unknown output type %q", ErrBadConfiguration, outputType)
+		return fmt.Errorf("%w: unknown execution mode %q", ErrBadConfiguration, executionMode)
 	}
 }
 

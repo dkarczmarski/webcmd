@@ -48,12 +48,12 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       stream-output
-    outputType: stream
+    executionMode: stream
   - url: GET /cmd/none
     commandTemplate: |
       /bin/echo
       no-output
-    outputType: none
+    executionMode: async
 
 
   - url: GET /cmd/query-first
@@ -83,7 +83,7 @@ urlCommands:
     commandTemplate: |
       /bin/echo
       hello
-    outputType: invalid
+    executionMode: invalid
     timeout: 5s
 
   - url: GET /cmd/bad-template

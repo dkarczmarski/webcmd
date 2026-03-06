@@ -424,7 +424,7 @@ func TestServer_OutputTypes(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /cmd/bad-output - unknown output type returns 500", func(t *testing.T) {
+	t.Run("GET /cmd/bad-output - unknown execution mode returns 500", func(t *testing.T) {
 		t.Parallel()
 		srv := setupServer(t)
 
@@ -438,8 +438,8 @@ func TestServer_OutputTypes(t *testing.T) {
 		}
 
 		errMsg := rec.Header().Get("X-Error-Message")
-		if errMsg == "" || !strings.Contains(errMsg, "unknown output type") {
-			t.Fatalf("Expected X-Error-Message to contain %q, got %q", "unknown output type", errMsg)
+		if errMsg == "" || !strings.Contains(errMsg, "unknown execution mode") {
+			t.Fatalf("Expected X-Error-Message to contain %q, got %q", "unknown execution mode", errMsg)
 		}
 	})
 }

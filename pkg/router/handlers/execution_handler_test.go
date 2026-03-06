@@ -40,7 +40,7 @@ func TestExecutionHandler_HappyPath_Stream(t *testing.T) {
 		URL: "POST /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo\n{{.url.name}}\n{{.headers.X_Test}}\n{{.body.text}}",
-			OutputType:      "stream",
+			ExecutionMode:   "stream",
 		},
 	}
 
@@ -101,7 +101,7 @@ func TestExecutionHandler_Text_EmptyBody(t *testing.T) {
 		URL: "POST /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo '{{.body.text}}'",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 		},
 	}
 
@@ -162,7 +162,7 @@ func TestExecutionHandler_ExtractParams_Query_FirstValueOnly(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo {{.url.a}}",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 		},
 	}
 
@@ -196,7 +196,7 @@ func TestExecutionHandler_ExtractParams_Headers_NormalizeAndJoin(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo '{{.headers.X_Test_Header}}' '{{.headers.X_Test}}'",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 		},
 	}
 
@@ -393,7 +393,7 @@ func TestExecutionHandler_Stream_RequiresFlusher_500(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "stream",
+			ExecutionMode:   "stream",
 		},
 	}
 
@@ -416,7 +416,7 @@ func TestExecutionHandler_Stream_RequiresFlusher_500(t *testing.T) {
 	}
 }
 
-func TestExecutionHandler_UnknownOutputType_500(t *testing.T) {
+func TestExecutionHandler_UnknownExecutionMode_500(t *testing.T) {
 	t.Parallel()
 
 	fr := &fakeRunner{}
@@ -430,7 +430,7 @@ func TestExecutionHandler_UnknownOutputType_500(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "invalid",
+			ExecutionMode:   "invalid",
 		},
 	}
 
@@ -445,12 +445,12 @@ func TestExecutionHandler_UnknownOutputType_500(t *testing.T) {
 	}
 
 	msg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(msg, "unknown output type") {
-		t.Fatalf("expected X-Error-Message to contain %q, got %q", "unknown output type", msg)
+	if !strings.Contains(msg, "unknown execution mode") {
+		t.Fatalf("expected X-Error-Message to contain %q, got %q", "unknown execution mode", msg)
 	}
 }
 
-func TestExecutionHandler_OutputNone_ReturnsBeforeWait(t *testing.T) {
+func TestExecutionHandler_ExecutionModeAsync_ReturnsBeforeWait(t *testing.T) {
 	t.Parallel()
 
 	block := make(chan struct{})
@@ -467,7 +467,7 @@ func TestExecutionHandler_OutputNone_ReturnsBeforeWait(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "none",
+			ExecutionMode:   "async",
 		},
 	}
 
@@ -486,7 +486,7 @@ func TestExecutionHandler_OutputNone_ReturnsBeforeWait(t *testing.T) {
 	case <-done:
 	case <-time.After(80 * time.Millisecond):
 		close(block)
-		t.Fatalf("handler did not return quickly for outputType=none")
+		t.Fatalf("handler did not return quickly for executionMode=async")
 	}
 
 	if rr.Code != http.StatusOK {
@@ -516,7 +516,7 @@ func TestExecutionHandler_CallGate_InvalidMode_500(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: ptrString("test-group"),
 				Mode:      "invalid-mode",
@@ -554,7 +554,7 @@ func TestExecutionHandler_CallGate_Busy_429(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: ptrString("test-group"),
 				Mode:      "single",
@@ -598,7 +598,7 @@ func TestExecutionHandler_CallGate_ImplicitGroupName_IsolatesDifferentURLs(t *te
 		URL: "GET /exec1",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: nil,
 				Mode:      "single",
@@ -609,7 +609,7 @@ func TestExecutionHandler_CallGate_ImplicitGroupName_IsolatesDifferentURLs(t *te
 		URL: "GET /exec2",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: nil,
 				Mode:      "single",
@@ -653,7 +653,7 @@ func TestExecutionHandler_CallGate_EmptyGroupName_SharedAcrossURLs(t *testing.T)
 		URL: "GET /exec1",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: ptrString(""),
 				Mode:      "single",
@@ -664,7 +664,7 @@ func TestExecutionHandler_CallGate_EmptyGroupName_SharedAcrossURLs(t *testing.T)
 		URL: "GET /exec2",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: ptrString(""),
 				Mode:      "single",
@@ -710,7 +710,7 @@ func TestExecutionHandler_CallGate_SharedGroupName_SharedAcrossURLs(t *testing.T
 		URL: "GET /exec1",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: &shared,
 				Mode:      "single",
@@ -721,7 +721,7 @@ func TestExecutionHandler_CallGate_SharedGroupName_SharedAcrossURLs(t *testing.T
 		URL: "GET /exec2",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 			CallGate: &config.CallGateConfig{
 				GroupName: &shared,
 				Mode:      "single",
@@ -781,7 +781,7 @@ func TestExecutionHandler_NonZeroExit_SetsExitCodeHeader(t *testing.T) {
 		URL: "GET /exec",
 		CommandConfig: config.CommandConfig{
 			CommandTemplate: "echo hello",
-			OutputType:      "text",
+			ExecutionMode:   "buffered",
 		},
 	}
 

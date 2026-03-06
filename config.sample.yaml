@@ -36,14 +36,14 @@ urlCommands:
       bash
       -c
       for i in {1..10}; do echo -n "$i "; date '+%H:%M:%S'; sleep 1; done
-    outputType: stream
+    executionMode: stream
     timeout: 30s
   - url: GET /stream/time-with-timeout-5
     commandTemplate: |
       bash
       -c
       for i in {1..10}; do echo -n "$i "; date '+%H:%M:%S'; sleep 1; done
-    outputType: stream
+    executionMode: stream
     timeout: 5s
   - url: GET /cmd/sleep
     callGate:
@@ -51,7 +51,7 @@ urlCommands:
     commandTemplate: |
       /bin/sleep
       5
-    outputType: none
+    executionMode: async
     timeout: 10s
   - url: POST /maintenance/cleanup
     callGate:

@@ -63,7 +63,7 @@ type CommandConfig struct {
 	Params                  ParamsConfig    `yaml:"params"`
 	Timeout                 *time.Duration  `yaml:"timeout"`
 	GraceTerminationTimeout *time.Duration  `yaml:"graceTerminationTimeout"`
-	OutputType              string          `yaml:"outputType"`
+	ExecutionMode           string          `yaml:"executionMode"`
 	CallGate                *CallGateConfig `yaml:"callGate"`
 }
 
