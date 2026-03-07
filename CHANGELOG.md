@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.10.0
+
+### Added
+- Added GoReleaser configuration and GitHub Actions release workflow.
+
 ## v0.9.0
 
 ### Changed
