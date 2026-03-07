@@ -21,6 +21,13 @@ dev-generate-cert:
       -nodes \
       -subj "/CN=localhost"
 
+dev-install-goreleaser:
+	go install github.com/goreleaser/goreleaser/v2@latest
+
+dev-goreleaser-verify:
+	goreleaser check
+	goreleaser release --snapshot --clean
+
 dev-lint:
 	golangci-lint run
 
