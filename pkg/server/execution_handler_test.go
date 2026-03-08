@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -46,7 +45,7 @@ func TestExecutionHandler_HappyPath_Stream(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/exec?name=test-name", strings.NewReader("test-body"))
 	req.Header.Set("X-Test", "test-header")
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := &flusherRecorder{ResponseRecorder: httptest.NewRecorder()}
 	h.ServeHTTP(rr, req)
@@ -106,7 +105,7 @@ func TestExecutionHandler_Text_EmptyBody(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -167,7 +166,7 @@ func TestExecutionHandler_ExtractParams_Query_FirstValueOnly(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec?a=1&a=2", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -204,7 +203,7 @@ func TestExecutionHandler_ExtractParams_Headers_NormalizeAndJoin(t *testing.T) {
 	req.Header.Add("X-Test-Header", "a")
 	req.Header.Add("X-Test", "val1")
 	req.Header.Add("X-Test", "val2")
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -237,7 +236,7 @@ func TestExecutionHandler_BodyReadError_500(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", io.NopCloser(&errorReader{}))
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -274,7 +273,7 @@ func TestExecutionHandler_BodyAsJSON_Invalid_400(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(`{invalid json}`))
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -322,7 +321,7 @@ func TestExecutionHandler_BodyAsJSON_NonObject_400(t *testing.T) {
 			t.Parallel()
 
 			req := httptest.NewRequest(http.MethodPost, "/exec", strings.NewReader(tc.body))
-			req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+			req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
@@ -362,7 +361,7 @@ func TestExecutionHandler_BuildCommand_Error_500(t *testing.T) {
 			}
 
 			req := httptest.NewRequest(http.MethodGet, "/exec?name=test", nil)
-			req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+			req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, req)
@@ -398,7 +397,7 @@ func TestExecutionHandler_Stream_RequiresFlusher_500(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	type nonFlusher struct{ http.ResponseWriter }
 
@@ -435,7 +434,7 @@ func TestExecutionHandler_UnknownExecutionMode_500(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -472,7 +471,7 @@ func TestExecutionHandler_ExecutionModeAsync_ReturnsBeforeWait(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 
@@ -525,7 +524,7 @@ func TestExecutionHandler_CallGate_InvalidMode_500(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -566,7 +565,7 @@ func TestExecutionHandler_CallGate_Busy_429(t *testing.T) {
 	defer release()
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -621,7 +620,7 @@ func TestExecutionHandler_CallGate_ImplicitGroupName_IsolatesDifferentURLs(t *te
 	defer release()
 
 	req1 := httptest.NewRequest(http.MethodGet, "/exec1", nil)
-	req1 = req1.WithContext(context.WithValue(req1.Context(), server.URLCommandKey, cmdCfg1))
+	req1 = req1.WithContext(server.WithURLCommand(req1.Context(), cmdCfg1))
 	rr1 := httptest.NewRecorder()
 	h.ServeHTTP(rr1, req1)
 
@@ -630,7 +629,7 @@ func TestExecutionHandler_CallGate_ImplicitGroupName_IsolatesDifferentURLs(t *te
 	}
 
 	req2 := httptest.NewRequest(http.MethodGet, "/exec2", nil)
-	req2 = req2.WithContext(context.WithValue(req2.Context(), server.URLCommandKey, cmdCfg2))
+	req2 = req2.WithContext(server.WithURLCommand(req2.Context(), cmdCfg2))
 	rr2 := httptest.NewRecorder()
 	h.ServeHTTP(rr2, req2)
 
@@ -683,7 +682,7 @@ func TestExecutionHandler_CallGate_EmptyGroupName_SharedAcrossURLs(t *testing.T)
 		{"/exec2", cmdCfg2},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, tc.cmdCfg))
+		req = req.WithContext(server.WithURLCommand(req.Context(), tc.cmdCfg))
 
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
@@ -740,7 +739,7 @@ func TestExecutionHandler_CallGate_SharedGroupName_SharedAcrossURLs(t *testing.T
 		{"/exec2", cmdCfg2},
 	} {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, tc.cmdCfg))
+		req = req.WithContext(server.WithURLCommand(req.Context(), tc.cmdCfg))
 
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
@@ -786,7 +785,7 @@ func TestExecutionHandler_NonZeroExit_SetsExitCodeHeader(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(context.WithValue(req.Context(), server.URLCommandKey, cmdCfg))
+	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)

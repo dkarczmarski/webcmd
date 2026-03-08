@@ -19,19 +19,8 @@ var (
 	ErrBadConfiguration      = errors.New("bad configuration")
 )
 
-type ContextKey string
-
-// AuthNameKey is the context key used to store and retrieve the authorization name.
-const AuthNameKey ContextKey = "authName"
-
-// URLCommandKey is the context key used to store and retrieve the URL command.
-const URLCommandKey ContextKey = "urlCommand"
-
-// RequestIDKey is the context key used to store and retrieve the request ID.
-const RequestIDKey ContextKey = "requestID"
-
 // RequestIDMiddleware creates a new Middleware that extracts the request ID from the X-Request-Id header,
-// or generates a new one if not present, and adds it to the request context under RequestIDKey.
+// or generates a new one if not present, and adds it to the request context.
 // It also sets the X-Request-Id header in the response.
 func RequestIDMiddleware() httpx.Middleware {
 	const header = "X-Request-Id"
@@ -43,7 +32,7 @@ func RequestIDMiddleware() httpx.Middleware {
 				rid = generateRequestID()
 			}
 
-			ctx := context.WithValue(request.Context(), RequestIDKey, rid)
+			ctx := WithRequestID(request.Context(), rid)
 
 			responseWriter.Header().Set(header, rid)
 
@@ -60,18 +49,15 @@ func generateRequestID() string {
 }
 
 func requestIDFromContext(ctx context.Context) string {
-	if v := ctx.Value(RequestIDKey); v != nil {
-		if rid, ok := v.(string); ok && rid != "" {
-			return rid
-		}
+	if rid, ok := RequestIDFromContext(ctx); ok && rid != "" {
+		return rid
 	}
 
 	return "-"
 }
 
 // APIKeyMiddleware creates a new Middleware that reads X-Api-Key header,
-// finds the matching authorization name, and adds it to the request context
-// under AuthNameKey.
+// finds the matching authorization name, and adds it to the request context.
 func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -90,7 +76,7 @@ func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 			}
 
 			if authName != "" {
-				ctx := context.WithValue(request.Context(), AuthNameKey, authName)
+				ctx := WithAuthName(request.Context(), authName)
 
 				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
 			}
@@ -101,7 +87,7 @@ func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 }
 
 // URLCommandMiddleware creates a new Middleware that finds the matching URL command
-// and adds it to the request context under URLCommandKey.
+// and adds it to the request context.
 func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
@@ -109,7 +95,7 @@ func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
 
 			for _, cmd := range configuration.URLCommands {
 				if cmd.URL == requestURL {
-					ctx := context.WithValue(request.Context(), URLCommandKey, &cmd)
+					ctx := WithURLCommand(request.Context(), &cmd)
 
 					return next.ServeHTTP(responseWriter, request.WithContext(ctx))
 				}
@@ -135,8 +121,7 @@ func AuthorizationMiddleware() httpx.Middleware {
 				return next.ServeHTTP(responseWriter, request)
 			}
 
-			valAuth := request.Context().Value(AuthNameKey)
-			authName, _ := valAuth.(string)
+			authName, _ := AuthNameFromContext(request.Context())
 
 			if authName == "" {
 				return httpx.NewWebError(

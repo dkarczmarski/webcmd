@@ -308,14 +308,9 @@ func startCommandProcess(
 }
 
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
-	valCmd := request.Context().Value(URLCommandKey)
-	if valCmd == nil {
-		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrCommandNotFound)
-	}
-
-	cmd, ok := valCmd.(*config.URLCommand)
+	cmd, ok := URLCommandFromContext(request.Context())
 	if !ok {
-		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrInvalidRequestContext)
+		return nil, fmt.Errorf("URLCommand not found in context: %w", ErrCommandNotFound)
 	}
 
 	return cmd, nil
