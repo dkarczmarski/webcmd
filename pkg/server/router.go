@@ -1,5 +1,4 @@
-// Package router provides HTTP router for running commands.
-package router
+package server
 
 import (
 	"log"
@@ -11,11 +10,10 @@ import (
 	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
-	"github.com/dkarczmarski/webcmd/pkg/router/handlers"
 )
 
-// New creates and initializes a new http.ServeMux instance with the given configuration.
-func New(configuration *config.Config) *http.ServeMux {
+// NewRouter creates and initializes a new http.ServeMux instance with the given configuration.
+func NewRouter(configuration *config.Config) *http.ServeMux {
 	processRunner := processrunner.New(&cmdrunner.RealRunner{})
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 	exec := gateexec.New(registry)
@@ -25,13 +23,13 @@ func New(configuration *config.Config) *http.ServeMux {
 		httpx.ErrorSink(log.Default(), configuration.Server.WithErrorHeader),
 		httpx.WithMiddleware(
 			httpx.Chain(
-				handlers.RequestIDMiddleware(),
-				handlers.APIKeyMiddleware(configuration),
-				handlers.URLCommandMiddleware(configuration),
-				handlers.AuthorizationMiddleware(),
-				handlers.TimeoutMiddleware(),
+				RequestIDMiddleware(),
+				APIKeyMiddleware(configuration),
+				URLCommandMiddleware(configuration),
+				AuthorizationMiddleware(),
+				TimeoutMiddleware(),
 			),
-			handlers.ExecutionHandler(processRunner, exec),
+			ExecutionHandler(processRunner, exec),
 		)))
 
 	return mux

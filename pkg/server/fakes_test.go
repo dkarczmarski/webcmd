@@ -1,4 +1,4 @@
-package handlers_test
+package server_test
 
 import (
 	"context"

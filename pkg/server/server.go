@@ -9,7 +9,6 @@ import (
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/gracehttp"
-	"github.com/dkarczmarski/webcmd/pkg/router"
 )
 
 const (
@@ -27,7 +26,7 @@ type Server struct {
 func New(cfg *config.Config) *Server {
 	return &Server{
 		cfg:    cfg,
-		router: router.New(cfg),
+		router: NewRouter(cfg),
 	}
 }
 
