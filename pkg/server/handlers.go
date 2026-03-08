@@ -11,14 +11,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/executor"
 	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
-	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 )
 
 var (
@@ -27,23 +26,31 @@ var (
 	ErrInvalidJSONBody       = errors.New("invalid JSON body")
 )
 
-// ProcessStarter abstracts starting a process for a command execution.
-// It is implemented by processrunner.ProcessRunner, which binds cmdrunner.Runner internally.
-// This keeps the handler decoupled from cmdrunner.Runner and makes testing easier.
-type ProcessStarter interface {
-	StartProcess(
-		command string,
-		args []string,
-		writer io.Writer,
-		graceTimeout *time.Duration,
-		opts ...processrunner.Option,
-	) (*processrunner.Process, error)
-}
-
-// GateExecutor abstracts gateexec behavior so handlers don't need callgate.Registry.
-// A concrete implementation can internally bind the registry and delegate to gateexec.
-type GateExecutor interface {
-	Run(ctx context.Context, gateConfig *config.CallGateConfig, key string, action gateexec.Action) (int, error)
+// CommandExecutor abstracts command execution logic used by the HTTP handler.
+//
+// It is responsible for orchestrating the full lifecycle of a command execution,
+// including:
+//
+//   - starting the underlying process,
+//   - optionally running the command under a call gate,
+//   - handling synchronous or asynchronous execution,
+//   - enforcing execution timeouts when configured.
+//
+// The HTTP layer constructs an ExecuteRequest and delegates the actual execution
+// to a CommandExecutor implementation. This keeps the handler independent from
+// lower-level details such as process management and gate coordination.
+//
+// The returned ExecuteResult contains the command exit code (when available)
+// and any execution error. Errors that occur before the command starts
+// (for example gate acquisition failures) are returned through ExecuteResult.Err.
+//
+// Implementations typically combine process execution (processrunner)
+// with gate-based concurrency control (gateexec).
+type CommandExecutor interface {
+	Execute(
+		ctx context.Context,
+		req executor.ExecuteRequest,
+	) executor.ExecuteResult
 }
 
 // ExecutionHandler returns a WebHandler that executes the command associated with
@@ -54,17 +61,19 @@ type GateExecutor interface {
 //   - reads the URLCommand from request context,
 //   - extracts request parameters (query, headers, body text, optional body JSON),
 //   - renders the configured command template,
-//   - selects output mode ("text", "stream", or "none"),
-//   - executes the command through the provided GateExecutor and ProcessStarter.
+//   - selects execution/output mode ("buffered", "stream", or "async"),
+//   - executes the command through the provided CommandExecutor.
 //
-// Output modes:
+// Execution modes:
 //
-//   - "text" (default):
-//     command output is buffered and written to the response after the process exits,
+//   - "buffered" (default):
+//     command output is buffered and written to the response after the command exits,
+//
 //   - "stream":
 //     command output is forwarded to the response as it is produced;
 //     requires http.Flusher support from the ResponseWriter,
-//   - "none":
+//
+//   - "async":
 //     command is started asynchronously and output is discarded.
 //
 // HTTP status code behavior:
@@ -100,9 +109,9 @@ type GateExecutor interface {
 //
 //   - command template rendering/building failed,
 //
-//   - gate/pre-action setup failed before the process was started,
+//   - command startup/preparation failed before execution began,
 //
-//   - handler configuration is invalid (for example unknown output type).
+//   - handler configuration is invalid (for example unknown execution mode).
 //
 // Important distinction:
 //
@@ -110,17 +119,11 @@ type GateExecutor interface {
 // success and therefore returns 200 OK. Such failures are exposed through X-Success,
 // X-Exit-Code and X-Error-Message headers.
 //
-// This variant keeps construction simple for production wiring: it accepts concrete
-// implementations that already bind their dependencies (process runner and gate executor).
-func ExecutionHandler(pr *processrunner.ProcessRunner, exec GateExecutor) httpx.WebHandler { //nolint:ireturn
-	return ExecutionHandlerWithDeps(pr, exec)
-}
-
-// ExecutionHandlerWithDeps is a test-friendly variant of ExecutionHandler that accepts abstractions
-// for starting processes and executing under a gate.
-func ExecutionHandlerWithDeps(starter ProcessStarter, exec GateExecutor) httpx.WebHandler { //nolint:ireturn
+// This variant keeps the HTTP layer decoupled from process startup and gate handling:
+// command execution orchestration is delegated to the provided CommandExecutor.
+func ExecutionHandler(exec CommandExecutor) httpx.WebHandler { //nolint:ireturn
 	return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
-		err := executionHandler(responseWriter, request, starter, exec)
+		err := executionHandler(responseWriter, request, exec)
 		if err != nil {
 			return translateError(err)
 		}
@@ -132,10 +135,9 @@ func ExecutionHandlerWithDeps(starter ProcessStarter, exec GateExecutor) httpx.W
 func executionHandler(
 	responseWriter http.ResponseWriter,
 	request *http.Request,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 ) error {
-	rid := requestIDFromContext(request.Context())
+	rid, _ := RequestIDFromContext(request.Context())
 	log.Printf("[INFO] rid=%s Executing command for: %s %s", rid, request.Method, request.URL.Path)
 
 	cmd, err := getURLCommandFromContext(request)
@@ -155,7 +157,6 @@ func executionHandler(
 
 	return prepareOutputAndRunCommand(
 		request.Context(),
-		starter,
 		exec,
 		cmd,
 		cmdResult,
@@ -189,122 +190,46 @@ func translateError(err error) error {
 
 func runCommand(
 	ctx context.Context,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	writer io.Writer,
 	async bool,
 	responseWriter http.ResponseWriter,
 ) error {
-	rid := requestIDFromContext(ctx)
-	action := createGateAction(starter, cmd, cmdResult, writer, async)
+	rid, _ := RequestIDFromContext(ctx)
 
-	exitCode, err := exec.Run(ctx, cmd.CallGate, cmd.URL, action)
-	if err != nil {
-		if errors.Is(err, gateexec.ErrPreAction) {
-			return fmt.Errorf("failed to start command: %w", err)
+	req := executor.ExecuteRequest{
+		Command:                 cmdResult.Command,
+		Arguments:               cmdResult.Arguments,
+		OutputWriter:            writer,
+		Async:                   async,
+		GraceTerminationTimeout: cmd.GraceTerminationTimeout,
+		CallGate:                cmd.CallGate,
+		DefaultGroup:            cmd.URL,
+		Timeout:                 cmd.CommandConfig.Timeout,
+	}
+
+	res := exec.Execute(ctx, req)
+	if res.Err != nil {
+		if errors.Is(res.Err, gateexec.ErrPreAction) {
+			return fmt.Errorf("failed to start command: %w", res.Err)
 		}
 
 		responseWriter.Header().Set("X-Success", "false")
-		responseWriter.Header().Set("X-Error-Message", err.Error())
+		responseWriter.Header().Set("X-Error-Message", res.Err.Error())
 		responseWriter.Header().Set("X-Exit-Code", "")
-		log.Printf("[ERROR] rid=%s Command failed with error: %v", rid, err)
+		log.Printf("[ERROR] rid=%s Command failed with error: %v", rid, res.Err)
 
-		return httpx.NewSilentError(err)
+		return httpx.NewSilentError(res.Err)
 	}
 
-	responseWriter.Header().Set("X-Success", strconv.FormatBool(exitCode == 0))
+	responseWriter.Header().Set("X-Success", strconv.FormatBool(res.ExitCode == 0))
 	responseWriter.Header().Set("X-Error-Message", "")
-	responseWriter.Header().Set("X-Exit-Code", strconv.Itoa(exitCode))
-	log.Printf("[INFO] rid=%s Command failed with exit code: %d", rid, exitCode)
+	responseWriter.Header().Set("X-Exit-Code", strconv.Itoa(res.ExitCode))
+	log.Printf("[INFO] rid=%s Command finished with exit code: %d", rid, res.ExitCode)
 
 	return nil
-}
-
-func createGateAction(
-	starter ProcessStarter,
-	cmd *config.URLCommand,
-	cmdResult *cmdbuilder.Result,
-	writer io.Writer,
-	async bool,
-) gateexec.Action {
-	return func(ctx context.Context) (int, <-chan struct{}, error) {
-		command := cmdResult.Command
-		arguments := cmdResult.Arguments
-
-		rid := requestIDFromContext(ctx)
-		log.Printf("[INFO] rid=%s Executing command: %s %v", rid, command, arguments)
-
-		proc, err := startCommandProcess(starter, command, arguments, writer, cmd.GraceTerminationTimeout)
-		if err != nil {
-			return -1, nil, err
-		}
-
-		if async {
-			asyncCtx := context.WithoutCancel(ctx)
-
-			var cancel context.CancelFunc = func() {}
-
-			if cmd.CommandConfig.Timeout != nil {
-				asyncCtx, cancel = context.WithTimeout(asyncCtx, *cmd.CommandConfig.Timeout)
-			}
-
-			return 0, waitAsyncAndLog(asyncCtx, proc, cancel), nil
-		}
-
-		exitCode, err := proc.WaitSync(ctx)
-		if err != nil {
-			return exitCode, nil, fmt.Errorf("process wait failed: %w", err)
-		}
-
-		return exitCode, nil, nil
-	}
-}
-
-func waitAsyncAndLog(
-	ctx context.Context,
-	proc *processrunner.Process,
-	cancel context.CancelFunc,
-) <-chan struct{} {
-	resCh := proc.WaitAsync(ctx)
-
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-		defer cancel()
-
-		rid := requestIDFromContext(ctx)
-
-		result := <-resCh
-		if result.Err != nil {
-			log.Printf("[ERROR] rid=%s Asynchronous command failed (exit code: %d), error: %v",
-				rid, result.ExitCode, result.Err)
-
-			return
-		}
-
-		log.Printf("[INFO] rid=%s Asynchronous command finished successfully (exit code: %d)",
-			rid, result.ExitCode)
-	}()
-
-	return done
-}
-
-func startCommandProcess(
-	starter ProcessStarter,
-	command string,
-	arguments []string,
-	writer io.Writer,
-	graceTerminationTimeout *time.Duration,
-) (*processrunner.Process, error) {
-	proc, err := starter.StartProcess(command, arguments, writer, graceTerminationTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start process: %w", err)
-	}
-
-	return proc, nil
 }
 
 func getURLCommandFromContext(request *http.Request) (*config.URLCommand, error) {
@@ -354,8 +279,7 @@ func buildCommand(
 
 func prepareOutputAndRunCommand(
 	ctx context.Context,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -364,11 +288,11 @@ func prepareOutputAndRunCommand(
 
 	switch executionMode {
 	case "async":
-		return prepareOutputAndRunAsyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunAsyncCommand(ctx, exec, cmd, cmdResult, responseWriter)
 	case "stream":
-		return prepareOutputAndRunStreamCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunStreamCommand(ctx, exec, cmd, cmdResult, responseWriter)
 	case "", "buffered":
-		return prepareOutputAndRunSyncCommand(ctx, starter, exec, cmd, cmdResult, responseWriter)
+		return prepareOutputAndRunSyncCommand(ctx, exec, cmd, cmdResult, responseWriter)
 	default:
 		return fmt.Errorf("%w: unknown execution mode %q", ErrBadConfiguration, executionMode)
 	}
@@ -376,15 +300,13 @@ func prepareOutputAndRunCommand(
 
 func prepareOutputAndRunAsyncCommand(
 	ctx context.Context,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
 ) error {
 	return runCommand(
 		ctx,
-		starter,
 		exec,
 		cmd,
 		cmdResult,
@@ -396,8 +318,7 @@ func prepareOutputAndRunAsyncCommand(
 
 func prepareOutputAndRunStreamCommand(
 	ctx context.Context,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -419,7 +340,6 @@ func prepareOutputAndRunStreamCommand(
 
 	return runCommand(
 		ctx,
-		starter,
 		exec,
 		cmd,
 		cmdResult,
@@ -431,8 +351,7 @@ func prepareOutputAndRunStreamCommand(
 
 func prepareOutputAndRunSyncCommand(
 	ctx context.Context,
-	starter ProcessStarter,
-	exec GateExecutor,
+	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
 	responseWriter http.ResponseWriter,
@@ -443,7 +362,6 @@ func prepareOutputAndRunSyncCommand(
 
 	err := runCommand(
 		ctx,
-		starter,
 		exec,
 		cmd,
 		cmdResult,

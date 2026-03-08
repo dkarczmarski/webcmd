@@ -167,24 +167,6 @@ func newFakeGateExecutor() *fakeGateExecutor {
 	return &fakeGateExecutor{busy: make(map[string]bool)}
 }
 
-// hold simulates an in-flight request holding the gate.
-// Useful for testing 429 responses.
-//
-//nolint:unparam
-func (g *fakeGateExecutor) hold(mode, group string) func() {
-	gid := gateID(mode, group)
-
-	g.mu.Lock()
-	g.busy[gid] = true
-	g.mu.Unlock()
-
-	return func() {
-		g.mu.Lock()
-		delete(g.busy, gid)
-		g.mu.Unlock()
-	}
-}
-
 func (g *fakeGateExecutor) Run(
 	ctx context.Context,
 	gateConfig *config.CallGateConfig,
@@ -302,8 +284,6 @@ type flusherRecorder struct {
 }
 
 func (f *flusherRecorder) Flush() { f.flushed = true }
-
-func ptrString(s string) *string { return &s }
 
 type errorReader struct{}
 

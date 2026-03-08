@@ -47,14 +47,6 @@ func generateRequestID() string {
 	return hex.EncodeToString(b)
 }
 
-func requestIDFromContext(ctx context.Context) string {
-	if rid, ok := RequestIDFromContext(ctx); ok && rid != "" {
-		return rid
-	}
-
-	return "-"
-}
-
 // APIKeyMiddleware creates a new Middleware that reads X-Api-Key header,
 // finds the matching authorization name, and adds it to the request context.
 func APIKeyMiddleware(resolver *RequestResolver) httpx.Middleware {

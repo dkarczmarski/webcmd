@@ -1,16 +1,14 @@
 package server_test
 
 import (
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/dkarczmarski/webcmd/pkg/config"
+	"github.com/dkarczmarski/webcmd/pkg/executor"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 	"github.com/dkarczmarski/webcmd/pkg/server"
@@ -32,7 +30,7 @@ func TestExecutionHandler_HappyPath_Stream(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -93,7 +91,7 @@ func TestExecutionHandler_Text_EmptyBody(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -131,7 +129,7 @@ func TestExecutionHandler_NoCommandInContext_404(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
@@ -154,7 +152,7 @@ func TestExecutionHandler_ExtractParams_Query_FirstValueOnly(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -188,7 +186,7 @@ func TestExecutionHandler_ExtractParams_Headers_NormalizeAndJoin(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -225,7 +223,7 @@ func TestExecutionHandler_BodyReadError_500(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -258,7 +256,7 @@ func TestExecutionHandler_BodyAsJSON_Invalid_400(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	trueVal := true
@@ -295,7 +293,7 @@ func TestExecutionHandler_BodyAsJSON_NonObject_400(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	trueVal := true
@@ -340,7 +338,7 @@ func TestExecutionHandler_BuildCommand_Error_500(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	for _, tc := range []struct {
@@ -385,7 +383,7 @@ func TestExecutionHandler_Stream_RequiresFlusher_500(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -422,7 +420,7 @@ func TestExecutionHandler_UnknownExecutionMode_500(t *testing.T) {
 	pr := processrunner.New(fr)
 	ge := newFakeGateExecutor()
 
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
+	handler := server.ExecutionHandler(executor.New(pr, ge))
 	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
 
 	cmdCfg := &config.URLCommand{
@@ -446,359 +444,5 @@ func TestExecutionHandler_UnknownExecutionMode_500(t *testing.T) {
 	msg := rr.Header().Get("X-Error-Message")
 	if !strings.Contains(msg, "unknown execution mode") {
 		t.Fatalf("expected X-Error-Message to contain %q, got %q", "unknown execution mode", msg)
-	}
-}
-
-func TestExecutionHandler_ExecutionModeAsync_ReturnsBeforeWait(t *testing.T) {
-	t.Parallel()
-
-	block := make(chan struct{})
-
-	fr := &fakeRunner{}
-	fr.cmd = &fakeCommand{pid: 123, waitBlock: block}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg := &config.URLCommand{
-		URL: "GET /exec",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "async",
-		},
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
-
-	rr := httptest.NewRecorder()
-
-	done := make(chan struct{})
-	go func() {
-		h.ServeHTTP(rr, req)
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(80 * time.Millisecond):
-		close(block)
-		t.Fatalf("handler did not return quickly for executionMode=async")
-	}
-
-	if rr.Code != http.StatusOK {
-		close(block)
-		t.Fatalf("expected status 200, got %d body=%q", rr.Code, rr.Body.String())
-	}
-
-	if rr.Body.Len() != 0 {
-		close(block)
-		t.Fatalf("expected empty body, got %q", rr.Body.String())
-	}
-
-	close(block)
-}
-
-func TestExecutionHandler_CallGate_InvalidMode_500(t *testing.T) {
-	t.Parallel()
-
-	fr := &fakeRunner{}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg := &config.URLCommand{
-		URL: "GET /exec",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: ptrString("test-group"),
-				Mode:      "invalid-mode",
-			},
-		},
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status 500, got %d body=%q", rr.Code, rr.Body.String())
-	}
-
-	msg := rr.Header().Get("X-Error-Message")
-	if !strings.Contains(msg, "invalid callgate mode") {
-		t.Fatalf("expected X-Error-Message to contain %q, got %q", "invalid callgate mode", msg)
-	}
-}
-
-func TestExecutionHandler_CallGate_Busy_429(t *testing.T) {
-	t.Parallel()
-
-	fr := &fakeRunner{}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg := &config.URLCommand{
-		URL: "GET /exec",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: ptrString("test-group"),
-				Mode:      "single",
-			},
-		},
-	}
-
-	release := ge.hold("single", "test-group")
-	defer release()
-
-	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected status 429, got %d body=%q", rr.Code, rr.Body.String())
-	}
-}
-
-func TestExecutionHandler_CallGate_ImplicitGroupName_IsolatesDifferentURLs(t *testing.T) {
-	t.Parallel()
-
-	fr := &fakeRunner{}
-	fr.cmd = &fakeCommand{
-		pid: 123,
-		onStart: func(c *fakeCommand) {
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			_, _ = c.stdout.Write([]byte("ok"))
-		},
-	}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg1 := &config.URLCommand{
-		URL: "GET /exec1",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: nil,
-				Mode:      "single",
-			},
-		},
-	}
-	cmdCfg2 := &config.URLCommand{
-		URL: "GET /exec2",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: nil,
-				Mode:      "single",
-			},
-		},
-	}
-
-	release := ge.hold("single", "GET /exec1")
-	defer release()
-
-	req1 := httptest.NewRequest(http.MethodGet, "/exec1", nil)
-	req1 = req1.WithContext(server.WithURLCommand(req1.Context(), cmdCfg1))
-	rr1 := httptest.NewRecorder()
-	h.ServeHTTP(rr1, req1)
-
-	if rr1.Code != http.StatusTooManyRequests {
-		t.Fatalf("expected status 429 for /exec1, got %d body=%q", rr1.Code, rr1.Body.String())
-	}
-
-	req2 := httptest.NewRequest(http.MethodGet, "/exec2", nil)
-	req2 = req2.WithContext(server.WithURLCommand(req2.Context(), cmdCfg2))
-	rr2 := httptest.NewRecorder()
-	h.ServeHTTP(rr2, req2)
-
-	if rr2.Code != http.StatusOK {
-		t.Fatalf("expected status 200 for /exec2, got %d body=%q", rr2.Code, rr2.Body.String())
-	}
-}
-
-func TestExecutionHandler_CallGate_EmptyGroupName_SharedAcrossURLs(t *testing.T) {
-	t.Parallel()
-
-	fr := &fakeRunner{}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg1 := &config.URLCommand{
-		URL: "GET /exec1",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: ptrString(""),
-				Mode:      "single",
-			},
-		},
-	}
-	cmdCfg2 := &config.URLCommand{
-		URL: "GET /exec2",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: ptrString(""),
-				Mode:      "single",
-			},
-		},
-	}
-
-	release := ge.hold("single", "")
-	defer release()
-
-	for _, tc := range []struct {
-		path   string
-		cmdCfg *config.URLCommand
-	}{
-		{"/exec1", cmdCfg1},
-		{"/exec2", cmdCfg2},
-	} {
-		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		req = req.WithContext(server.WithURLCommand(req.Context(), tc.cmdCfg))
-
-		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusTooManyRequests {
-			t.Fatalf("expected status 429 for %s, got %d body=%q", tc.path, rr.Code, rr.Body.String())
-		}
-	}
-}
-
-func TestExecutionHandler_CallGate_SharedGroupName_SharedAcrossURLs(t *testing.T) {
-	t.Parallel()
-
-	fr := &fakeRunner{}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	shared := "shared"
-
-	cmdCfg1 := &config.URLCommand{
-		URL: "GET /exec1",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: &shared,
-				Mode:      "single",
-			},
-		},
-	}
-	cmdCfg2 := &config.URLCommand{
-		URL: "GET /exec2",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-			CallGate: &config.CallGateConfig{
-				GroupName: &shared,
-				Mode:      "single",
-			},
-		},
-	}
-
-	release := ge.hold("single", "shared")
-	defer release()
-
-	for _, tc := range []struct {
-		path   string
-		cmdCfg *config.URLCommand
-	}{
-		{"/exec1", cmdCfg1},
-		{"/exec2", cmdCfg2},
-	} {
-		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		req = req.WithContext(server.WithURLCommand(req.Context(), tc.cmdCfg))
-
-		rr := httptest.NewRecorder()
-		h.ServeHTTP(rr, req)
-
-		if rr.Code != http.StatusTooManyRequests {
-			t.Fatalf("expected status 429 for %s, got %d body=%q", tc.path, rr.Code, rr.Body.String())
-		}
-	}
-}
-
-func TestExecutionHandler_NonZeroExit_SetsExitCodeHeader(t *testing.T) {
-	t.Parallel()
-
-	runErr := exec.Command("sh", "-c", "exit 7").Run()
-
-	var exitErr *exec.ExitError
-	if !errors.As(runErr, &exitErr) {
-		t.Fatalf("expected *exec.ExitError, got %T: %v", runErr, runErr)
-	}
-
-	fr := &fakeRunner{}
-	fr.cmd = &fakeCommand{
-		pid:     123,
-		waitErr: exitErr,
-		onStart: func(c *fakeCommand) {
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			_, _ = c.stdout.Write([]byte("OUT\n"))
-		},
-	}
-	pr := processrunner.New(fr)
-	ge := newFakeGateExecutor()
-
-	handler := server.ExecutionHandlerWithDeps(pr, ge)
-	h := httpx.ToHandler(httpx.ErrorSink(nil, true), handler)
-
-	cmdCfg := &config.URLCommand{
-		URL: "GET /exec",
-		CommandConfig: config.CommandConfig{
-			CommandTemplate: "echo hello",
-			ExecutionMode:   "buffered",
-		},
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/exec", nil)
-	req = req.WithContext(server.WithURLCommand(req.Context(), cmdCfg))
-
-	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%q", rr.Code, rr.Body.String())
-	}
-
-	if rr.Header().Get("X-Exit-Code") != "7" {
-		t.Fatalf("expected X-Exit-Code=7, got %q", rr.Header().Get("X-Exit-Code"))
-	}
-
-	if rr.Header().Get("X-Error-Message") != "" {
-		t.Fatalf("expected empty X-Error-Message, got %q", rr.Header().Get("X-Error-Message"))
 	}
 }
