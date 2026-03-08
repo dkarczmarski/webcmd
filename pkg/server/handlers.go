@@ -12,11 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/cmdbuilder"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/executor"
-	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 )
 
@@ -173,7 +171,7 @@ func translateError(err error) error {
 		return httpx.NewWebError(err, http.StatusInternalServerError, ErrStreamingNotSupported.Error())
 	}
 
-	if errors.Is(err, callgate.ErrBusy) {
+	if errors.Is(err, executor.ErrBusy) {
 		return httpx.NewWebError(err, http.StatusTooManyRequests, "Too many requests")
 	}
 
@@ -212,7 +210,7 @@ func runCommand(
 
 	res := exec.Execute(ctx, req)
 	if res.Err != nil {
-		if errors.Is(res.Err, gateexec.ErrPreAction) {
+		if errors.Is(res.Err, executor.ErrPreExecution) {
 			return fmt.Errorf("failed to start command: %w", res.Err)
 		}
 

@@ -8,10 +8,19 @@ import (
 	"log"
 	"time"
 
+	"github.com/dkarczmarski/webcmd/pkg/callgate"
 	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/gateexec"
 	"github.com/dkarczmarski/webcmd/pkg/processrunner"
 )
+
+var (
+	ErrBusy         = errors.New("executor busy")
+	ErrPreExecution = errors.New("executor pre-execution error")
+	ErrRuntime      = errors.New("executor runtime error")
+)
+
+var errStartProcess = errors.New("executor start process")
 
 // ProcessStarter abstracts starting a process for command execution.
 //
@@ -89,24 +98,24 @@ func (e *Executor) Execute(ctx context.Context, req ExecuteRequest) ExecuteResul
 
 	exitCode, err := e.exec.Run(ctx, req.CallGate, req.DefaultGroup, action)
 	if err != nil {
-		// If the error is NOT from the action itself (pre-action error), then we did not start.
-		// If it is from the action (command was started), we might have an exit code.
-		isPreAction := errors.Is(err, gateexec.ErrPreAction)
-
-		if !isPreAction {
-			// If it's not a pre-action error, it must have come from the action (StartProcess or WaitSync).
-			// If we have a non-zero exit code, use it.
-			if exitCode != 0 {
-				return ExecuteResult{
-					ExitCode: exitCode,
-					Err:      err,
-				}
+		switch {
+		case errors.Is(err, callgate.ErrBusy):
+			return ExecuteResult{
+				ExitCode: exitCode,
+				Err:      fmt.Errorf("%w: %w: %w", ErrPreExecution, ErrBusy, err),
 			}
-		}
 
-		return ExecuteResult{
-			ExitCode: exitCode,
-			Err:      err,
+		case errors.Is(err, gateexec.ErrPreAction), errors.Is(err, errStartProcess):
+			return ExecuteResult{
+				ExitCode: exitCode,
+				Err:      fmt.Errorf("%w: %w", ErrPreExecution, err),
+			}
+
+		default:
+			return ExecuteResult{
+				ExitCode: exitCode,
+				Err:      fmt.Errorf("%w: %w", ErrRuntime, err),
+			}
 		}
 	}
 
@@ -122,7 +131,7 @@ func (e *Executor) createGateAction(req ExecuteRequest) gateexec.Action {
 
 		proc, err := e.starter.StartProcess(req.Command, req.Arguments, req.OutputWriter, req.GraceTerminationTimeout)
 		if err != nil {
-			return -1, nil, fmt.Errorf("failed to start process: %w", err)
+			return -1, nil, fmt.Errorf("%w: failed to start process: %w", errStartProcess, err)
 		}
 
 		if req.Async {

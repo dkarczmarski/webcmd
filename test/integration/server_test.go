@@ -189,7 +189,7 @@ func TestServer_CommandExecution(t *testing.T) {
 		}
 
 		errMsg := rec.Header().Get("X-Error-Message")
-		expectedMsg := "process wait failed: signal: killed"
+		expectedMsg := "executor runtime error: process wait failed: signal: killed"
 
 		if errMsg != expectedMsg {
 			t.Errorf("Expected timeout error message in X-Error-Message header to be %q, got %q", expectedMsg, errMsg)
