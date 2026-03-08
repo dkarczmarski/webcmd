@@ -17,6 +17,7 @@ func NewRouter(configuration *config.Config) *http.ServeMux {
 	processRunner := processrunner.New(&cmdrunner.RealRunner{})
 	registry := callgate.NewRegistry(callgate.WithDefaults())
 	exec := gateexec.New(registry)
+	resolver := NewRequestResolver(configuration)
 	mux := http.NewServeMux()
 
 	mux.Handle("/", httpx.ToHandler(
@@ -24,8 +25,8 @@ func NewRouter(configuration *config.Config) *http.ServeMux {
 		httpx.WithMiddleware(
 			httpx.Chain(
 				RequestIDMiddleware(),
-				APIKeyMiddleware(configuration),
-				URLCommandMiddleware(configuration),
+				APIKeyMiddleware(resolver),
+				URLCommandMiddleware(resolver),
 				AuthorizationMiddleware(),
 				TimeoutMiddleware(),
 			),

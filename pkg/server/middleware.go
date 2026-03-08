@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dkarczmarski/webcmd/pkg/config"
 	"github.com/dkarczmarski/webcmd/pkg/httpx"
 )
 
@@ -58,27 +57,17 @@ func requestIDFromContext(ctx context.Context) string {
 
 // APIKeyMiddleware creates a new Middleware that reads X-Api-Key header,
 // finds the matching authorization name, and adds it to the request context.
-func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
+func APIKeyMiddleware(resolver *RequestResolver) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
 			apiKey := request.Header.Get("X-Api-Key")
 
-			var authName string
-
 			if apiKey != "" {
-				for _, auth := range configuration.Authorization {
-					if auth.Key == apiKey {
-						authName = auth.Name
+				if authName, ok := resolver.ResolveAuthName(apiKey); ok {
+					ctx := WithAuthName(request.Context(), authName)
 
-						break
-					}
+					return next.ServeHTTP(responseWriter, request.WithContext(ctx))
 				}
-			}
-
-			if authName != "" {
-				ctx := WithAuthName(request.Context(), authName)
-
-				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
 			}
 
 			return next.ServeHTTP(responseWriter, request)
@@ -88,17 +77,15 @@ func APIKeyMiddleware(configuration *config.Config) httpx.Middleware {
 
 // URLCommandMiddleware creates a new Middleware that finds the matching URL command
 // and adds it to the request context.
-func URLCommandMiddleware(configuration *config.Config) httpx.Middleware {
+func URLCommandMiddleware(resolver *RequestResolver) httpx.Middleware {
 	return func(next httpx.WebHandler) httpx.WebHandler {
 		return httpx.WebHandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) error {
 			requestURL := request.Method + " " + request.URL.Path
 
-			for _, cmd := range configuration.URLCommands {
-				if cmd.URL == requestURL {
-					ctx := WithURLCommand(request.Context(), &cmd)
+			if cmd, ok := resolver.ResolveURLCommand(requestURL); ok {
+				ctx := WithURLCommand(request.Context(), cmd)
 
-					return next.ServeHTTP(responseWriter, request.WithContext(ctx))
-				}
+				return next.ServeHTTP(responseWriter, request.WithContext(ctx))
 			}
 
 			return next.ServeHTTP(responseWriter, request)
