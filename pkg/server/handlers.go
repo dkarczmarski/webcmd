@@ -289,7 +289,9 @@ func prepareOutputAndRunCommand(
 	case "stream":
 		return prepareOutputAndRunStreamCommand(ctx, exec, cmd, cmdResult, responseWriter)
 	case "", "buffered":
-		buf := newMemoryOutputBuffer()
+		const defaultThresholdBufferLimit = 10 * 1024
+
+		buf := NewThresholdBuffer(defaultThresholdBufferLimit)
 
 		defer func() {
 			if err := buf.Close(); err != nil {
