@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -290,7 +289,17 @@ func prepareOutputAndRunCommand(
 	case "stream":
 		return prepareOutputAndRunStreamCommand(ctx, exec, cmd, cmdResult, responseWriter)
 	case "", "buffered":
-		return prepareOutputAndRunSyncCommand(ctx, exec, cmd, cmdResult, responseWriter)
+		const defaultThresholdBufferLimit = 10 * 1024
+
+		buf := NewThresholdBuffer(defaultThresholdBufferLimit)
+
+		defer func() {
+			if err := buf.Close(); err != nil {
+				log.Printf("[ERROR] failed to close output buffer: %v", err)
+			}
+		}()
+
+		return prepareOutputAndRunSyncCommand(ctx, exec, cmd, cmdResult, buf, responseWriter)
 	default:
 		return fmt.Errorf("%w: unknown execution mode %q", ErrBadConfiguration, executionMode)
 	}
@@ -352,10 +361,9 @@ func prepareOutputAndRunSyncCommand(
 	exec CommandExecutor,
 	cmd *config.URLCommand,
 	cmdResult *cmdbuilder.Result,
+	buf outputBuffer,
 	responseWriter http.ResponseWriter,
 ) error {
-	var buf bytes.Buffer
-
 	responseWriter.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	err := runCommand(
@@ -363,7 +371,7 @@ func prepareOutputAndRunSyncCommand(
 		exec,
 		cmd,
 		cmdResult,
-		&buf,
+		buf,
 		false,
 		responseWriter,
 	)
@@ -371,7 +379,7 @@ func prepareOutputAndRunSyncCommand(
 		return err
 	}
 
-	if _, writeErr := responseWriter.Write(buf.Bytes()); writeErr != nil {
+	if _, writeErr := buf.WriteTo(responseWriter); writeErr != nil {
 		log.Printf("[ERROR] failed to write buffered output: %v", writeErr)
 	}
 
