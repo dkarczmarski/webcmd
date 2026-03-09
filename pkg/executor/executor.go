@@ -100,6 +100,8 @@ func (e *Executor) Execute(ctx context.Context, req ExecuteRequest) ExecuteResul
 	if err != nil {
 		switch {
 		case errors.Is(err, callgate.ErrBusy):
+			// ErrBusy is treated as a special case of ErrPreExecution.
+			// It means the command could not start because the executor/gate is currently busy.
 			return ExecuteResult{
 				ExitCode: exitCode,
 				Err:      fmt.Errorf("%w: %w: %w", ErrPreExecution, ErrBusy, err),
